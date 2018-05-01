@@ -31,7 +31,7 @@ class Sentence(object):
 
 
     def __unicode__(self):
-        return u''.format(self.detokenize())
+        return u'{}'.format(self.detokenize())
 
 
     def detokenize(self):
@@ -71,13 +71,13 @@ class Sentence(object):
         return snippet
 
 
-        @staticmethod
-        def parse(val):
-            """Parses a cell from a row in a GeoDeepDive TSV file"""
-            if val.startswith('{') and val.endswith('}'):
-                vals = val.strip('{}').split(',')
-                return vals
-            return val
+    @staticmethod
+    def parse(val):
+        """Parses a cell from a row in a GeoDeepDive TSV file"""
+        if val.startswith('{') and val.endswith('}'):
+            vals = val.strip('{}').split(',')
+            return vals
+        return val
 
 
 
