@@ -10,6 +10,52 @@ from collections import namedtuple
 import yaml
 
 
+class Document(object):
+
+    def __init__(self, rows):
+        self.sentences = [Sentence(row) for row in rows]
+
+
+    def __unicode__(self):
+        return ' '.join([s.detokenize() for s in self.sentences])
+
+
+    def guess_department(self):
+        """Tries to guess the department based on available text"""
+        text = unicode(self).lower()
+        keywords = {
+            'anthropol': 'an',
+            'amphibian': 'hr',
+            'archeol': 'an',
+            'entomol': 'en',
+            'fish': 'fs',
+            'fossil': 'pl',
+            'icthyo': 'fs',
+            'insect': 'en',
+            'invertebrate': 'iz',
+            'mammal': 'mm',
+            'meteorit': 'ms',
+            'mineral': 'ms',
+            'paleo': 'pl',
+            'ornitho': 'br',
+            'reptil': 'hr'
+        }
+        results = {}
+        for kw, dept in keywords.iteritems():
+            count = text.count(kw)
+            if count:
+                try:
+                    results[dept] += count
+                except KeyError:
+                    results[dept] = count
+        if results:
+            dept, count = sorted(results.iteritems(), key=lambda v: v[1])[-1]
+            if count < 10:
+                dept += '?'
+            return dept
+        return ''
+
+
 class Sentence(object):
     """Contains methods to parse row data from a GeoDeepDive TSV file"""
 
@@ -122,11 +168,13 @@ if __name__ == '__main__':
     pattern = r'\b((USNM|NMNH)[\-\s]?(No\.? |# ?|specimens? )?[A-Z]{0,3}\d+[A-Z]?([-/,][A-Z0-9]+)?)\b'
     terms = yaml.load(open('config.yaml', 'rb'))['terms']
     specimens = {}
+    depts = {}
     files = glob.iglob(os.path.join('input', 'nlp352', '*'))
     for i, fp in enumerate([fp for fp in files if '.' not in fp]):
         print '{}. Checking {}...'.format(i + 1, os.path.basename(fp))
         with open(fp, 'rb') as f:
-            rows = csv.reader(f, delimiter='\t')
+            rows = list(csv.reader(f, delimiter='\t'))
+            dept = Document(rows).guess_department()
             for row in rows:
                 # Confirm that one of the search terms occurs in the current
                 # row before checking for catalog numbers
@@ -139,17 +187,18 @@ if __name__ == '__main__':
                         specimens.setdefault(spec_id, {}) \
                                  .setdefault(sentence.doc_id, []) \
                                  .append(sentence.snippet(spec_id))
+                    depts[sentence.doc_id] = dept
 
     # Create output list from the specimens dictionary
     output = []
     for spec_id, docs in specimens.iteritems():
         for doc_id, snippets in docs.iteritems():
-            output.append([doc_id, spec_id, ' | '.join(snippets)])
+            output.append([doc_id, spec_id, depts.get(doc_id), ' | '.join(snippets)])
 
     # Write results to file
     print 'Writing results...'
     with open(os.path.join('output', 'cited.csv'), 'wb') as f:
         writer = csv.writer(f)
-        writer.writerow(['DocId', 'VerbatimId', 'Snippets'])
+        writer.writerow(['DocId', 'VerbatimId', 'Dept', 'Snippets'])
         for row in output:
             writer.writerow([val.encode('utf-8') for val in row])
