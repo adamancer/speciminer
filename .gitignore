@@ -1,2 +1,6 @@
 input/*
 output/*
+*.db
+*.sqlite
+
+.DS_Store
