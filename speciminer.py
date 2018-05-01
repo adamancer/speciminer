@@ -4,30 +4,11 @@ import csv
 import glob
 import os
 import re
+import string
+from collections import namedtuple
 
+import yaml
 
-# Preflight
-for dirname in ['input', 'output']:
-    try:
-        os.makedirs(dirname)
-    except OSError:
-        pass
-
-# Find specimens in documents in input
-pattern = r'\b((USNM|NMNH)[\-\s]?[A-Z]?\d+)(-[A-Za-z0-9]+)?\b'
-output = []
-for fp in glob.iglob(os.path.join('input', '*')):
-    with open(fp, 'rb') as f:
-        # Find USNM specimens
-        matches = re.findall(pattern, f.read())
-        specimens = list(set([sorted(m, key=len)[-1].strip() for m in matches]))
-
-# Write results to file
-with open(os.path.join('output', 'cited.csv'), 'wb') as f:
-    writer = csv.writer(f)
-    writer.writerow(['DocId', 'Journal', 'Specimen'])
-    for row in output:
-        writer.writerow(row)
 
 class Sentence(object):
     """Contains methods to parse row data from a GeoDeepDive TSV file"""
@@ -127,3 +108,48 @@ class Token(object):
         return word
 
 
+
+
+if __name__ == '__main__':
+    # Preflight
+    for dirname in ['input', 'output']:
+        try:
+            os.makedirs(dirname)
+        except OSError:
+            pass
+
+    # Find USNM specimens in documents in input
+    pattern = r'\b((USNM|NMNH)[\-\s]?(No\.? |# ?|specimens? )?[A-Z]{0,3}\d+[A-Z]?([-/,][A-Z0-9]+)?)\b'
+    terms = yaml.load(open('config.yaml', 'rb'))['terms']
+    specimens = {}
+    files = glob.iglob(os.path.join('input', 'nlp352', '*'))
+    for i, fp in enumerate([fp for fp in files if '.' not in fp]):
+        print '{}. Checking {}...'.format(i + 1, os.path.basename(fp))
+        with open(fp, 'rb') as f:
+            rows = csv.reader(f, delimiter='\t')
+            for row in rows:
+                # Confirm that one of the search terms occurs in the current
+                # row before checking for catalog numbers
+                if [t for t in terms if t in unicode(row).lower()]:
+                    sentence = Sentence(row)
+                    text = sentence.detokenize()
+                    matches = re.findall(pattern, text, flags=re.I)
+                    spec_ids = set([sorted(m, key=len)[-1].strip() for m in matches])
+                    for spec_id in spec_ids:
+                        specimens.setdefault(spec_id, {}) \
+                                 .setdefault(sentence.doc_id, []) \
+                                 .append(sentence.snippet(spec_id))
+
+    # Create output list from the specimens dictionary
+    output = []
+    for spec_id, docs in specimens.iteritems():
+        for doc_id, snippets in docs.iteritems():
+            output.append([doc_id, spec_id, ' | '.join(snippets)])
+
+    # Write results to file
+    print 'Writing results...'
+    with open(os.path.join('output', 'cited.csv'), 'wb') as f:
+        writer = csv.writer(f)
+        writer.writerow(['DocId', 'VerbatimId', 'Snippets'])
+        for row in output:
+            writer.writerow([val.encode('utf-8') for val in row])
