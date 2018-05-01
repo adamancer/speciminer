@@ -30,7 +30,7 @@ def get_document(doc_id):
     return docs[0] if docs else {}
 
 
-def get_specimens(catnum):
+def get_specimens(catnum, **kwargs):
     """Returns specimen metadata from the Smithsonian"""
     url = 'https://geogallery.si.edu/portal'
     headers = {'UserAgent': 'MinSciBot/0.1 (mansura@si.edu)'}
@@ -39,7 +39,9 @@ def get_specimens(catnum):
         'format': 'json',
         'schema': 'simpledwr'
     }
+    params.update(**kwargs)
     response = requests.get(url, headers=headers, params=params)
+    print 'Checking {}...'.format(response.url)
     if not response.from_cache:
         time.sleep(3)
     if response.status_code == 200:
@@ -91,7 +93,11 @@ if __name__ == '__main__':
             catnums = get_catnums(verbatim)
             for catnum in catnums:
                 # Check the NMNH data portal for this specimen
-                records = get_specimens(str(catnum.set_mask('default')))
+                spec_id = str(catnum.set_mask('default'))
+                if data['Dept']:
+                    records = get_specimens(spec_id, dept=data['Dept'].rstrip('?'))
+                else:
+                    records = get_specimens(spec_id)
                 ezids = filter_records(records, catnum)
                 doi = [id_['id'] for id_ in doc.get('identifier', [])
                        if id_['type'] == 'doi']
@@ -103,12 +109,13 @@ if __name__ == '__main__':
                     'OccurrenceId': ' | '.join(ezids),
                     'VerbatimId': verbatim,
                     'SpecimenId': str(catnum.set_mask('include_code')),
+                    'Dept': data['Dept'],
                     'Snippets': data['Snippets']
                 })
 
     # Create a new output file with the extended data
-    keys = ['DocId', 'DOI', 'VerbatimId', 'SpecimenId', 'Journal', 'Year',
-            'OccurrenceId', 'Snippets']
+    keys = ['DocId', 'DOI', 'VerbatimId', 'SpecimenId', 'Dept',
+            'Journal', 'Year', 'OccurrenceId', 'Snippets']
     with open(os.path.join('output', 'extended.csv'), 'wb') as f:
         writer = csv.writer(f)
         writer.writerow(keys)
