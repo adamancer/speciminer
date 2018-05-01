@@ -58,12 +58,17 @@ def filter_records(record, refnum):
     matches = []
     for rec in records:
         try:
-            catnums = get_catnums(rec['catalogNumber'])[0]
+            catnum = get_catnums(rec['catalogNumber'])[0]
         except (IndexError, KeyError):
             pass
         else:
-            if not refnum.prefix and (catnum.prefix and catnum.prefix != 'PAL'):
+            # Exclude records with one-character prefixes if the refnum
+            # is not prefixed. Other departments appear to have prefixes for
+            # internal use (e.g., PAL) that are not (or are not always) given
+            # when that specimen is cited in the literature.
+            if not refnum.prefix and catnum.prefix and len(catnum.prefix) == 1:
                 continue
+            # Exclude records that don't have the same base number
             if catnum.number == refnum.number:
                 matches.append(rec)
     return [m['occurrenceID'] for m in matches]
@@ -88,7 +93,6 @@ if __name__ == '__main__':
                 # Check the NMNH data portal for this specimen
                 records = get_specimens(str(catnum.set_mask('default')))
                 ezids = filter_records(records, catnum)
-                print str(catnum.set_mask('include_code')), ezids
                 doi = [id_['id'] for id_ in doc.get('identifier', [])
                        if id_['type'] == 'doi']
                 output.append({
@@ -103,8 +107,8 @@ if __name__ == '__main__':
                 })
 
     # Create a new output file with the extended data
-    keys = ['DocId', 'DOI', 'Journal', 'Year', 'OccurrenceId',
-            'VerbatimId', 'SpecimenId', 'Snippets']
+    keys = ['DocId', 'DOI', 'VerbatimId', 'SpecimenId', 'Journal', 'Year',
+            'OccurrenceId', 'Snippets']
     with open(os.path.join('output', 'extended.csv'), 'wb') as f:
         writer = csv.writer(f)
         writer.writerow(keys)
@@ -113,8 +117,8 @@ if __name__ == '__main__':
 
     # Create a file summarizing specimen usage by year
     years = {}
-    for row in rows:
-        year = years.setdefault(row['Year'], {'pubs': [], 'specimens': [])
+    for row in output:
+        year = years.setdefault(row['Year'], {'pubs': [], 'specimens': []})
         year['pubs'].append(row['DocId'])
         # Specimens are counted per publication per year
         year['specimens'].append(row['DocId'] + '|' + row['SpecimenId'])
