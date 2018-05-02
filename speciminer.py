@@ -27,6 +27,7 @@ class Document(object):
             'anthropol': 'an',
             'amphibian': 'hr',
             'archeol': 'an',
+            'botan': 'bt',
             'entomol': 'en',
             'fish': 'fs',
             'fossil': 'pl',
