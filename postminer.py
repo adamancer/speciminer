@@ -2,6 +2,7 @@
 
 import csv
 import os
+import re
 import time
 
 import requests
@@ -35,9 +36,11 @@ def get_specimens(catnum, **kwargs):
     url = 'https://geogallery.si.edu/portal'
     headers = {'UserAgent': 'MinSciBot/0.1 (mansura@si.edu)'}
     params = {
-        'keyword': catnum,
+        'dept': 'any',
+        'sample_id': catnum,
         'format': 'json',
-        'schema': 'simpledwr'
+        'schema': 'simpledwr',
+        'limit': 100
     }
     params.update(**kwargs)
     response = requests.get(url, headers=headers, params=params)
@@ -55,10 +58,12 @@ def get_specimens(catnum, **kwargs):
     return []
 
 
-def filter_records(record, refnum):
+def filter_records(record, refnum, keywords=None):
     """Returns records that match a reference catalog number"""
-    matches = []
+    scored = []
     for rec in records:
+        score = 0
+        # Check catalog number
         try:
             catnum = get_catnums(rec['catalogNumber'])[0]
         except (IndexError, KeyError):
@@ -69,11 +74,24 @@ def filter_records(record, refnum):
             # internal use (e.g., PAL) that are not (or are not always) given
             # when that specimen is cited in the literature.
             if not refnum.prefix and catnum.prefix and len(catnum.prefix) == 1:
-                continue
+                score -= 100
             # Exclude records that don't have the same base number
-            if catnum.number == refnum.number:
-                matches.append(rec)
-    return [m['occurrenceID'] for m in matches]
+            if catnum.number != refnum.number:
+                score -= 100
+        # Check taxa against keywords from publication title
+        if keywords:
+            higher_class = rec.get('higherClassification', '').lower()
+            taxa = set([t for t in higher_class.split(' | ') if t])
+            matches = taxa & keywords
+            score += len(matches)
+            if matches:
+                print 'Matched taxa: {}'.format(matches)
+        if score >= 0:
+            scored.append([rec, score])
+    if scored:
+        max_score = max([s[1] for s in scored]) if scored else 0
+        return [m[0]['occurrenceID'] for m in scored if m[1] == max_score]
+    return []
 
 
 
@@ -88,19 +106,21 @@ if __name__ == '__main__':
             data = dict(zip(keys, row))
             # Fetch data about the publication
             doc = get_document(data['DocId'])
+            keywords = set([re.sub('[^a-z]', '', w.lower()) for w in doc.get('title').split() if len(w) >= 5])
             # Normalize catalog numbers and expand ranges
             verbatim = data['VerbatimId']
             catnums = get_catnums(verbatim)
             for catnum in catnums:
                 # Check the NMNH data portal for this specimen
                 spec_id = str(catnum.set_mask('default'))
-                if data['Dept']:
-                    records = get_specimens(spec_id, dept=data['Dept'].rstrip('?'))
-                else:
-                    records = get_specimens(spec_id)
-                ezids = filter_records(records, catnum)
-                doi = [id_['id'] for id_ in doc.get('identifier', [])
-                       if id_['type'] == 'doi']
+                records = get_specimens(spec_id)
+                ezids = filter_records(records, catnum, keywords=keywords)
+                if len(ezids) > 1:
+                    records = get_specimens(spec_id, dept=data['Dept'].strip('?'))
+                    check_dept = filter_records(records, catnum)
+                    if check_dept or not data['Dept'].endswith('?'):
+                        ezids = check_dept
+                doi = [id_['id'] for id_ in doc.get('identifier', []) if id_['type'] == 'doi']
                 output.append({
                     'DocId': data['DocId'],
                     'DOI': doi[0] if doi else '',
