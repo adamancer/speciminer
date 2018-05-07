@@ -1,0 +1,38 @@
+mask: \b({prefix}\s?{filler}{number}(({join_discrete}|{join_range}){number})*)\b
+range_mask: \b({number}{join_range}{number})\b
+discrete_mask: \b({number}({join_discrete}{number})+)\b
+
+# Museum codes (e.g., USNM)
+prefix: (USNM|NMNH)
+
+# Words found between prefix and number (e.g., USNM No. 12345). This is a non-
+# capture group that includes whitespace/punctuation before/after.
+filler: (?:[Nn]os?\.?\s|#\s?|specimens?\s)?
+
+# Unprefixed catalog number (e.g., G3551-00, 111234/44)
+number: ([A-Z]{0,3}\s?[lO0-9']+(?:(?:[A-Za-z]|[-/,][A-Z0-9]+))?)
+
+# Suffixes
+suffix: (( \d{1,4}| [A-z] ?\d| [A-z]{1,3}| \d{1,2} \d{1,2}| \d{1,2} [A-z])?[A-z]?)$
+
+# Conjunctions that may be used to join multiple numbers (e.g, USNM 123 and 345)
+join_discrete: '(,?\sand\s|,\s|(\s(?=\d{4,6}\b))+)'
+#join_discrete: '(,?\sand\s|,\s)'
+join_range: '(\sthru\s|\sthrough\s|\s?-\s?)'
+
+# Test words
+test:
+    - USNM 83943b
+    - USNM 16215 16216 16217
+    - USNM 39958O
+    - USNM G3551-00
+    - NMNH 123456/78
+    - 'USNM #12345'
+    - 'USNM#123456'
+    - USNM No. 234567
+    - NMNH No. 11742-00, 11743-00, and 11745-00
+    - USNM 123456 and 1234567
+    - USNM 234567-234571
+    - 'USNM # R12596'
+    - USNM B240-B243 and B245-B247
+    - NMNH specimens 112345 through 112348
