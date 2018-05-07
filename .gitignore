@@ -2,5 +2,7 @@ input/*
 output/*
 *.db
 *.sqlite
+*.sqlite-journal
+*.pyc
 
 .DS_Store
