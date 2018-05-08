@@ -30,12 +30,12 @@ class Query(object):
         self.length += 1
         if self.length >= self.max_length:
             self.commit()
-            self.length = 0
 
 
     def commit(self):
         if self.session is not None:
             self.session.commit()
+        self.length = 0
         return self.session
 
 
