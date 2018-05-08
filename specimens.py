@@ -1,5 +1,6 @@
 """Defines methods to work with USNM catalog numbers and specimen data"""
 
+import os
 import re
 import time
 from collections import namedtuple
@@ -7,6 +8,18 @@ from collections import namedtuple
 import requests
 import yaml
 
+
+# Implement the cache if requests_cache is installed
+try:
+    import requests_cache
+except ImportError:
+    pass
+else:
+    try:
+        os.mkdir('output')
+    except OSError:
+        pass
+    requests_cache.install_cache(os.path.join('output', 'cache'))
 
 SpecNum = namedtuple('SpecNum', ['code', 'prefix', 'number', 'suffix'])
 

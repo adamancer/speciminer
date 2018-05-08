@@ -1,13 +1,24 @@
 """Defines methods to analyze and search TSV files from GeoDeepDive"""
 
+import os
 import re
 import time
 
 import requests
-import requests_cache
 
 
-requests_cache.install_cache('cache')
+# Implement the cache if requests_cache is installed
+try:
+    import requests_cache
+except ImportError:
+    pass
+else:
+    try:
+        os.mkdir('output')
+    except OSError:
+        pass
+    requests_cache.install_cache(os.path.join('output', 'cache'))
+
 
 class Document(object):
 
@@ -196,7 +207,7 @@ def get_documents(**kwargs):
     url = 'https://geodeepdive.org/api/articles'
     response = requests.get(url, params=kwargs)
     print 'Checking {}...'.format(response.url)
-    if not response.from_cache:
+    if hasattr(response, 'from_cache') and not response.from_cache:
         time.sleep(1)
     if response.status_code == 200:
         return response.json().get('success', {}).get('data', [])
