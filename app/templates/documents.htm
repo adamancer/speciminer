@@ -1,0 +1,5 @@
+{% include '_header.htm' %}
+    {%- for doc in documents -%}
+      <li><a href="/documents/{{ doc.id }}">{{ doc.title }} ({{ doc.year }})</a></li>
+    {%- endfor -%}
+{% include '_footer.htm' %}

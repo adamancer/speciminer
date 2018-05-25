@@ -1,0 +1,13 @@
+{% include '_header.htm' %}
+  <h1>{{ specimen.spec_num }}</h1>
+  <table>
+  {%- for doc in documents|dictsort -%}
+    <h2><a href="/documents/{{ doc[0] }}">{{ doc[1]['title'] }}</a></h2>
+    <ul>
+    {%- for snippet in doc[1]['snippets'] -%}
+      <li>{{ snippet|safe }}</li>
+    {%- endfor -%}
+    </ul>
+  {%- endfor -%}
+  </table>
+{% include '_footer.htm' %}

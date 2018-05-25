@@ -1,0 +1,22 @@
+{% include '_header.htm' %}
+    <h1>{{ doc.title }}</h1>
+    <ul>
+      <li><i>{{ doc.journal }}</i>
+      {%- if doc.jour_topic -%}
+        &nbsp;(topic = {{ doc.jour_topic }})
+      {%- endif -%}
+      </li>
+      <li>{{ doc.year }}</li>
+      {%- if doc.doi -%}
+        <li><a href="https://doi.org/{{ doc.doi|urlencode }}">{{ doc.doi }}</a></li>
+      {%- endif -%}
+      {%- if doc.doc_topic -%}
+        <li>topic = {{ doc.doc_topic }}</li>
+      {%- endif -%}
+    </ul>
+    <ul>
+    {%- for spec_num in spec_nums -%}
+      <li><a href="/specimens/{{ spec_num|urlencode }}">{{ spec_num }}</a></li>
+    {%- endfor -%}
+    </ul>
+{% include '_footer.htm' %}
