@@ -68,6 +68,24 @@ class Parser(object):
         return nums
 
 
+    def stringify(self, spec_num):
+        delim_prefix = ' '
+        delim_suffix = '-'
+        if not spec_num.prefix:
+            delim_prefix = ''
+        elif len(spec_num.prefix) > 1:
+            delim_prefix = ' '
+        if ((spec_num.suffix.isalpha() and len(spec_num.suffix) == 1)
+            or re.match('[A-Za-z]-\d+', spec_num.suffix)):
+            delim_suffix = ''
+        return '{} {}{}{}{}{}'.format(spec_num.code,
+                                      spec_num.prefix,
+                                      delim_prefix,
+                                      spec_num.number,
+                                      delim_suffix,
+                                      spec_num.suffix).rstrip(delim_suffix)
+
+
     def parse_discrete(self, val):
         """Returns a list of discrete specimen numbers"""
         discrete = self.discrete.search(val)
