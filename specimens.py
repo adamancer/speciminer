@@ -146,38 +146,45 @@ class Parser(object):
 
 
 
-    def split_num(self, val):
+    def parse_num(self, val):
         """Parses a catalog number into prefix, number, and suffix"""
-        orig = val
-        val = self.remove_museum_code(val)
+        val = self.remove_museum_code(val.strip())
         val = re.sub(self.regex['filler'], '', val)
         # Identify prefix and number
         try:
             prefix = re.search(ur'\b^[A-Z ]+', val).group()
         except AttributeError:
             prefix = ''
-        number = val[len(prefix):].strip('- ') \
-                                  .replace('l', '1') \
-                                  .replace('O', '0')
+        else:
+            prefix = self.fix_ocr_errors(prefix, True)
+            if prefix.isnumeric():
+                prefix = ''
+        # Format number
+        number = val[len(prefix):].strip(' -')
         # Identify suffix
         suffix = ''
-        for delim in ('-', ',', '/', '.'):
+        for delim in ('--', ' - ', '-', ',', '/', '.'):
             try:
-                number, suffix = number.rsplit(delim, 1)
+                number, suffix = number.split(delim, 1)
             except ValueError:
-                pass
+                delim = ''
             else:
                 break
-        else:
-            if not number.isdigit():
-                try:
-                    suffix = re.search(self.regex['suffix'], number).group()
-                except AttributeError:
-                    pass
-                else:
-                    number = number.rstrip(suffix)
+        # Clean up stray OCR errors in the number now suffix has been removed
+        if not number.isdigit():
+            number = ''.join([self.fix_ocr_errors(c) for c in number])
+        # Identify trailing letters, wacky suffixes, etc.
+        if not number.isdigit():
+            try:
+                trailing = re.search(self.regex['suffix2'], number).group()
+            except AttributeError:
+                pass
+            else:
+                suffix = trailing + delim + suffix
+                number = number.rstrip(trailing)
         prefix = prefix.strip()
-        suffix = suffix.strip()
+        number = self.fix_ocr_errors(number)
+        suffix = self.fix_ocr_errors(suffix.strip(), match=True)
         return SpecNum(self.code, prefix, int(number), suffix.upper())
 
 
@@ -253,6 +260,7 @@ def filter_records(records, refnum, keywords=None):
         try:
             catnum = rec['catalogNumber'].upper().split('|')[-1].strip()
             catnum = parser.split_num(catnum)
+            catnum = parser.parse_num(catnum)
         except (IndexError, KeyError, ValueError):
             pass
         else:
