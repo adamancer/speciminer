@@ -1,5 +1,8 @@
 """Defines methods to interact with the database of citations"""
 
+import datetime as dt
+import json
+import os
 import re
 
 from sqlalchemy import and_
@@ -7,36 +10,84 @@ from sqlalchemy import and_
 from database import Session, Document, Journal, Snippet, Specimen
 
 
-class Query(object):
+class _Query(object):
 
-    def __init__(self):
+    def __init__(self, max_length=5000):
         self.session = None
         self.length = 0
-        self.max_length = 250
+        self.max_length = max_length
+
+
+    def __getattr__(self, attr):
+        try:
+            return object.__getattr__(attr)
+        except AttributeError:
+            if self.session is None:
+                self.new()
+            return getattr(self.session, attr)
 
 
     def new(self):
         if self.session is not None:
             self.session.commit().close()
         self.session = Session()
-        return self.session
+        return self
+
+
+    def iterate(self):
+        self.length += 1
+        if self.length >= self.max_length:
+            self.commit()
 
 
     def add(self, transaction):
         if self.session is None:
-            self.session = self.new()
+            self.new()
         self.session.add(transaction)
-        # Commit a batch once the queue hits a certain size
-        self.length += 1
-        if self.length >= self.max_length:
-            self.commit()
+        self.iterate()
+
+
+    def insert(self, tableclass, **kwargs):
+        session = self.new() if self.session is None else self.session
+        rec = tableclass(**kwargs)
+        self.add(rec)
+        return rec
+
+
+    def upsert(self, tableclass, primary_key='id', **kwargs):
+        session = self.new() if self.session is None else self.session
+        if not isinstance(primary_key, list):
+            primary_key = [primary_key]
+        fltr = {k: kwargs[k] for k in primary_key if kwargs.get(k) is not None}
+        if fltr and self.session.query(tableclass).filter_by(**fltr).first():
+            return self.update(tableclass, primary_key[0], **kwargs)
+        else:
+            return self.insert(tableclass, **kwargs)
+
+
+    def update(self, tableclass, primary_key='id', **kwargs):
+        session = self.new() if self.session is None else self.session
+        table = tableclass.__table__
+        self.iterate()
+        return session.execute(
+                table.update() \
+                     .where(getattr(table.c, primary_key) == kwargs[primary_key]) \
+                     .values(**kwargs))
+
+
+    def delete(self, tableclass, primary_key='id', **kwargs):
+        session = self.new() if self.session is None else self.session
+        session.query(tableclass).filter(primary_key=kwargs['primary_key']).delete()
+        self.iterate()
 
 
     def commit(self):
         if self.session is not None:
             self.session.commit()
         self.length = 0
-        return self.session
+        now = dt.datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        print 'Committed changes ({})'.format(now)
+        return self
 
 
     def close(self):
@@ -45,77 +96,44 @@ class Query(object):
         self.session = None
 
 
-    def get_document(self, doc_id=None):
-        session = self.new() if self.session is None else self.session
-        if doc_id is None:
-            return session.query(Document).all()
-        return session.query(Document).filter(Document.id == doc_id).first()
+class Query(_Query):
+
+    def __init__(self, *args, **kwargs):
+        super(Query, self).__init__(*args, **kwargs)
 
 
-    def get_journal(self, title=None):
-        session = self.new() if self.session is None else self.session
-        if title is None:
-            return session.query(Journal).all()
-        return session.query(Journal).filter(Journal.title == title).first()
+    def read_bibjson(self, fp):
+        """Reads bibliography data the bibjson file provided by GeoDeepDive"""
+        for bib in json.load(open(fp, 'rb')):
+            doi = [b['id'] for b in bib.get('identifier', []) if b['type'] == 'doi']
+            kwargs = {
+                'id': bib['_gddid'],
+                'doi': doi[0] if doi else None,
+                'title': bib.get('title'),
+                'journal': bib.get('journal', {}).get('name'),
+                'year': bib.get('year')
+            }
+            self.upsert(Document, **kwargs)
+            if kwargs['journal']:
+                self.upsert(Journal, 'title', **{'title': kwargs['journal']})
+        self.commit().close()
 
 
-    def get_snippets(self, rec_id):
-        session = self.new() if self.session is None else self.session
-        rows = session.query(Snippet).filter(Snippet.rec_id == rec_id).all()
-        return [row.snippet for row in rows]
+    def get_topics(self, snippet_id):
+        """Gets the topic of the journal or paper associated with a snippet"""
+        query = self.query(Document.topic.label('doc_topic'),
+                           Journal.topic.label('jour_topic'),
+                           Journal.title) \
+                    .join(Journal, Journal.title == Document.journal) \
+                    .join(Snippet, Snippet.doc_id == Document.id) \
+                    .filter(Snippet.id == snippet_id)
+        row = query.first()
+        if row is not None:
+            return [s.strip('?') for s in [row.doc_topic, row.jour_topic] if s]
+        return []
 
 
-    def get_specimen(self, spec_num=None, doc_id=None):
-        session = self.new() if self.session is None else self.session
-        if spec_num is None and doc_id is None:
-            return session.query(Specimen).all()
-        return session.query(Specimen).filter(and_(Specimen.spec_num == spec_num,
-                                                   Specimen.doc_id == doc_id)).all()
 
-
-    def update_document(self, doc_id, **kwargs):
-        session = self.new() if self.session is None else self.session
-        table = Document.__table__
-        session.execute(table.update().where(table.c.id == doc_id).values(**kwargs))
-
-
-    def update_specimen(self, rec_id, **kwargs):
-        session = self.new() if self.session is None else self.session
-        table = Specimen.__table__
-        session.execute(table.update().where(table.c.id == rec_id).values(**kwargs))
-
-
-    def add_journal(self, title):
-        session = self.new() if self.session is None else self.session
-        journal = Journal(title=title)
-        if not self.get_journal(title):
-            self.add(journal)
-
-
-    def add_snippet(self, doc_id, snippet, rec_id=None):
-        session = self.new() if self.session is None else self.session
-        if not self.get_document(doc_id):
-            doc = Document(id=doc_id)
-            self.add(doc)
-        warning = True if re.search(r'\* \d', snippet) else False
-        rec = Snippet(snippet=snippet, doc_id=doc_id, rec_id=rec_id, warning=warning)
-        self.add(rec)
-
-
-    def add_citation(self, doc_id, spec_num, snippets, topic=None, num_specimens=None):
-        session = self.new() if self.session is None else self.session
-        # Insert document
-        if not self.get_document(doc_id):
-            doc = Document(id=doc_id, topic=topic, num_specimens=num_specimens)
-            self.add(doc)
-        # Insert specimen
-        rec_id = spec_num
-        if spec_num is not None:
-            rec = Specimen(doc_id=doc_id, spec_num=spec_num)
-            self.add(rec)
-            session.flush()
-            rec_id = rec.id
-        # Insert snippets
-        rows = []
-        for snippet in set(snippets):
-            self.add_snippet(doc_id, snippet, rec_id)
+if __name__ == '__main__':
+    #Query().read_bibjson(os.path.join('output', 'bibjson'))
+    print Query().get_topics(37328)
