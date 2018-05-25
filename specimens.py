@@ -99,6 +99,46 @@ class Parser(object):
         return nums
 
 
+    def cluster(self, val, minlen=4, maxlen=6, related=None):
+        """Clusters related digits to better resemble catalog numbers"""
+        if related is None:
+            related = []
+        orig = val
+        # Leave values with range keywords as-is
+        if re.search(self.regex['join_range'], val):
+            return val
+        nums = re.findall(r'\b' + self.regex['number'], val)
+        if nums:
+            related += nums
+            if maxlen is None:
+                maxlen = max([len(n) for n in related])
+            # Can shorter fragments be combined into that length?
+            clustered = []
+            fragment = ''
+            for num in nums:
+                fragment += num
+                if len(fragment) == maxlen:
+                    clustered.append(int(fragment))
+                    fragment = ''
+                elif len(fragment) > maxlen:
+                    break
+            else:
+                # Combined groups of related numbers
+                nums = [int(n) for n in nums if int(n) in clustered]
+                for n in clustered:
+                    mindiff = min([abs(n - m) for m in nums]) if nums else 0
+                    if mindiff > 10:
+                        nums = [n for n in nums if len(str(n)) > minlen]
+                        break
+                else:
+                    nums = clustered
+        nums = [str(num) for num in nums]
+        if orig.replace(' ', '-') == '-'.join(nums):
+            return orig
+        self.sprint('Clustered:', orig, '=>', nums)
+        return ' '.join(nums)
+
+
     def remove_museum_code(self, val):
         if self.code:
             return val.replace(self.code, '', 1).strip(' -')
