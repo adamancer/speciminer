@@ -249,8 +249,22 @@ def get_specimens(catnum, **kwargs):
     return []
 
 
-def filter_records(records, refnum, keywords=None):
+def filter_records(records, refnum, keywords=None, dept=None):
     """Returns records that match a reference catalog number"""
+    depts = {
+        'an': 'Anthropology',
+        'bt': 'Botany',
+        'br': 'Vertebrate Zoology: Birds',
+        'en': 'Entomology',
+        'fs': 'Vertebrate Zoology: Fishes',
+        'hr': 'Vertebrate Zoology: Herpetology',
+        'iz': 'Invertebrate Zoology',
+        'mm': 'Vertebrate Zoology: Mammals',
+        'ms': 'Mineral Sciences',
+        'pl': 'Paleobiology'
+    }
+    if dept is not None:
+        dept = depts[dept]
     parser = Parser()
     refnum = parser.split_num(refnum)
     scored = []
@@ -272,6 +286,12 @@ def filter_records(records, refnum, keywords=None):
                 score -= 100
             # Exclude records that don't have the same base number
             if catnum.number != refnum.number:
+                score -= 100
+        # Check collectionCode against topic
+        if dept is not None:
+            if rec.get('collectionCode') == dept:
+                score += 1
+            else:
                 score -= 100
         # Check taxa against keywords from publication title
         if keywords:
