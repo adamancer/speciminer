@@ -188,6 +188,22 @@ class Parser(object):
         return SpecNum(self.code, prefix, int(number), suffix.upper())
 
 
+    @staticmethod
+    def fix_ocr_errors(val, match=False):
+        pairs = {
+            u'I': u'1',
+            u'l': u'1',
+            u'O': u'0',
+            u'S': u'5'
+        }
+        if match:
+            return pairs.get(val, val)
+        else:
+            for search, repl in pairs.iteritems():
+                val = val.replace(search, repl)
+            return val
+
+
     def fill_range(self, n1, n2=None):
         """Fills a catalog number range"""
         if n2 is None:
