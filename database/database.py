@@ -59,6 +59,7 @@ class Link(Base):
     ezid = Column(String)
     match_quality = Column(String(collation='nocase'))
     department = Column(String(collation='nocase'))
+    notes = Column(String(collation='nocase'))
     # Ensure that specimens aren't being duplicated
     __table_args__ = (
         UniqueConstraint('doc_id', 'spec_num', name='_doc_spec'),
