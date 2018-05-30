@@ -5,7 +5,7 @@ import re
 
 import matplotlib.pyplot as plt
 
-from database.database import Document, Link
+from database.database import Document, Link, Journal
 from database.queries import Query
 
 
@@ -18,6 +18,91 @@ def round_down(val, base=5):
 
 def round_up(val, base=5):
     return int(base * round(float(val) / base))
+
+
+def slugify(val):
+    return re.sub('[():/]', '', val.lower().strip().replace(' ', '_'))
+
+
+def tabulate_citations(fn='citations.md'):
+    depts = {
+        'an': 'Anthropology',
+        'bt': 'Botany',
+        'br': 'Vertebrate Zoology: Birds',
+        'en': 'Entomology',
+        'fs': 'Vertebrate Zoology: Fishes',
+        'hr': 'Vertebrate Zoology: Herpetology',
+        'iz': 'Invertebrate Zoology',
+        'mm': 'Vertebrate Zoology: Mammals',
+        'ms': 'Mineral Sciences',
+        'pl': 'Paleobiology'
+    }
+    citations = {}
+    # Find citations
+    query = DB.query(Link.department, Link.doc_id) \
+              .filter(Link.department != None)
+    for row in query.all():
+        try:
+            citations[row.department]
+        except KeyError:
+            citations[row.department] = {
+                'citations': 1,
+                'pubs_cited': [row.doc_id],
+                'pubs_topic': []
+            }
+        else:
+            citations[row.department]['citations'] += 1
+            citations[row.department]['pubs_cited'].append(row.doc_id)
+    # Find publications
+    query = DB.query(Document.id,
+                     Document.topic.label('doc_topic'),
+                     Journal.topic.label('jour_topic')) \
+              .join(Journal, Journal.title == Document.journal)
+    for row in query.all():
+        topic = row.doc_topic.rstrip('?') if row.doc_topic else None
+        dept = depts.get(topic)
+        if dept:
+            citations[dept]['pubs_topic'].append(row.id)
+    rows = []
+    for dept, stats in citations.iteritems():
+        rows.append([dept,
+                     stats['citations'],
+                     len(set(stats['pubs_cited'])),
+                     len(set(stats['pubs_topic']))])
+    colnames = ['Department', '# citations', '# pubs with citations', '# pubs on topic']
+    _tabulate(os.path.join('docs', fn), rows, colnames)
+
+
+def _tabulate(fp, rows, colnames=None, sortindex=0):
+    assert colnames is None or len(rows[0]) == len(colnames)
+    if sortindex is not None:
+        rows.sort(key=lambda row: row[sortindex])
+    if colnames:
+        rows.insert(0, colnames)
+    # Use the length of each cell to calculate padding
+    cols = []
+    for row in rows:
+        for i, val in enumerate(row):
+            try:
+                cols[i].append(len(str(val)))
+            except (AttributeError, IndexError):
+                cols.append([len(str(val))])
+    cols = [max(col) for col in cols]
+    # Add border
+    border = ['-' * (col + 2) for col in cols]
+    #rows.insert(0, border)
+    #rows.append(border)
+    if colnames:
+        rows.insert(1, border)
+    # Write table to file
+    with open(fp, 'wb') as f:
+        for row in rows:
+            # Left-justify text and right-justify numbers
+            row = [val.ljust(cols[i]) if isinstance(val, basestring)
+                   else str(val).rjust(cols[i]) for i, val in enumerate(row)]
+            # Pad non-border cells
+            row = [' {} '.format(val) if val.strip('-') else val for val in row]
+            f.write(u'|{}|\n'.format('|'.join(row)))
 
 
 def plot_citations(include=None):
@@ -67,7 +152,25 @@ def plot_papers(include=None):
                  ylabel='# publications')
 
 
+def plot_all_papers():
+    years = []
+    data = {}
+    query = DB.query(Document.id, Document.year)
+    for row in query.all():
+        data.setdefault('All', {}).setdefault(int(row.year), []).append(row.id)
+    for year, documents in data['All'].iteritems():
+        data['All'][year] = len(set(documents))
+        years.append(int(year))
+    rng = '{}-{}'.format(min(years), max(years))
+    years = [y for y in xrange(min(years), max(years) + 1)]
+    return _plot(data, years,
+                 title='Publications mentioning USNM/NMNH ({})'.format(rng),
+                 ylabel='# publications')
+
+
+
 def _plot(data, years, include=None, **metadata):
+    assert include is None or isinstance(include, list)
     labels = []
     rows = []
     for dept in sorted(data):
@@ -92,10 +195,13 @@ def _plot(data, years, include=None, **metadata):
     ax.set_xticks(xrange(round_down(min(years) - 5, 10),
                          round_up(max(years), 10) + 5, 10))
     plt.legend([bar[0] for bar in bars], labels, prop={'size': 7})
-    slug = re.sub('[()]', '', metadata['title'].lower().replace(' ', '_'))
-    fp = os.path.join('docs', slug + '.png')
+    dept = ' '.join(include) if include else ''
+    fp = os.path.join('docs', slugify(dept + ' ' + metadata['title']) + '.png')
     fig.savefig(fp, dpi=300, bbox_inches='tight')
+    plt.close()
 
-include = None#['Anthropology']
-plot_citations(include=include)
-plot_papers(include=include)
+if __name__ == '__main__':
+    tabulate_citations()
+    plot_citations()
+    plot_papers()
+    plot_all_papers()
