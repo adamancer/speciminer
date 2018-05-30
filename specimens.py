@@ -10,6 +10,8 @@ from collections import namedtuple
 
 import requests
 import yaml
+from nltk.corpus import stopwords
+from unidecode import unidecode
 
 
 # Implement the cache if requests_cache is installed
@@ -26,13 +28,25 @@ else:
 
 SpecNum = namedtuple('SpecNum', ['code', 'prefix', 'number', 'suffix'])
 
+LOG = open(os.path.join('output', 'match.log'), 'wb')
+
+
+def epen(fn, *args, **kwargs):
+    fn = os.path.basename(fn)
+    return open(os.path.join(os.path.dirname(__file__), fn), *args, **kwargs)
+
+
 
 class Parser(object):
-    regex = yaml.load(open('regex.yaml', 'rb'))
+    regex = yaml.load(epen(os.path.abspath('regex.yaml'), 'rb'))
 
     def __init__(self):
         # Create regex masks
-        self.mask = re.compile(self.regex['mask'].format(**self.regex))
+        if '{prefix}' in self.regex['catnum']:
+            self.regex['catnum'] = self.regex['catnum'].format(**self.regex)
+            self.mask = re.compile(self.regex['mask'].format(**self.regex))
+        else:
+            self.mask = re.compile(self.regex['mask'])
         self.discrete = re.compile(self.regex['discrete_mask'].format(**self.regex))
         self.range = re.compile(self.regex['range_mask'].format(**self.regex))
         self.code = ''
@@ -83,9 +97,12 @@ class Parser(object):
             nums = [self.parse_num(val)]
         # Are the lengths in the results reasonable?
         if len(nums) > 1:
-            maxlen = max([len(str(n.number)) for n in nums])
-            nums = [n for n in nums if n.number > 10**(maxlen - 2)]
-        nums = sorted(list(set([self.stringify(n) for n in nums])))
+            minlen = min([len(str(n.number)) for n in nums])
+            if minlen < 4:
+                maxlen = max([len(str(n.number)) for n in nums])
+                nums = [n for n in nums if n.number > 10**(maxlen - 2)]
+        nums = [self.stringify(n) for n in nums]
+        nums = [n for i, n in enumerate(nums) if n not in nums[:i]]
         return nums
 
 
@@ -111,7 +128,7 @@ class Parser(object):
         """Returns a list of discrete specimen numbers"""
         val = re.sub(self.regex['filler'], '', val)
         prefix = re.match('(' + self.regex['prefix'] + ')', val)
-        prefix = prefix.group() if prefix is not None else''
+        prefix = prefix.group() if prefix is not None else ''
         discrete = self.discrete.search(val)
         nums = []
         if discrete is not None:
@@ -174,6 +191,11 @@ class Parser(object):
             return val
         nums = re.findall(r'\b' + self.regex['number'], val)
         if nums:
+            # Are all the numbers four digits or longer?
+            if min([len(n) for n in nums]) >= 4:
+                return ' '.join(nums)
+            # Numbers are a mix of short and long numbers. This may be a
+            # spacing issue, so see if we can combine the numbers intelligently.
             related += nums
             if maxlen is None:
                 maxlen = max([len(n) for n in related])
@@ -341,21 +363,23 @@ class Parser(object):
 
 
 
-def get_specimens(catnum, **kwargs):
+def get_specimens(catnum=None, **kwargs):
     """Returns specimen metadata from the Smithsonian"""
-    url = 'https://geogallery.si.edu/portal'
+    url = 'http://supersite.local/portal'
+    #url = 'https://geogallery.si.edu/portal'
     headers = {'UserAgent': 'MinSciBot/0.1 (mansura@si.edu)'}
     params = {
         'dept': 'any',
-        'sample_id': Parser().remove_museum_code(catnum),
         'format': 'json',
         'schema': 'simpledwr',
         'limit': 1000
     }
+    if catnum is not None:
+        params['sample_id'] = Parser().remove_museum_code(catnum)
     params.update(**kwargs)
     response = requests.get(url, headers=headers, params=params)
-    print 'Checking {}...'.format(response.url)
-    if hasattr(response, 'from_cache') and not response.from_cache:
+    #print 'Checking {}...'.format(response.url)
+    if not '.local' in url and hasattr(response, 'from_cache') and not response.from_cache:
         time.sleep(1)
     if response.status_code == 200:
         try:
@@ -366,6 +390,78 @@ def get_specimens(catnum, **kwargs):
         else:
             return [rec['SimpleDarwinRecord'] for rec in records]
     return []
+
+
+def get_keywords(text, minlen=5, blacklist=None, endings=None, replacements=None):
+    if blacklist is None:
+        blacklist = [
+            'above',
+            'along',
+            'animalia',
+            'beach',
+            'boundary',
+            'coast',
+            'county',
+            'creek',
+            'district',
+            'early',
+            'eastern',
+            'family',
+            'formation',
+            'indet',
+            'island',
+            'late',
+            'locality',
+            'lower',
+            'member',
+            'middle',
+            'mountain',
+            'national',
+            'north',
+            'northern',
+            'genus',
+            'group',
+            'present',
+            'province',
+            'ridge',
+            'river',
+            'south',
+            'southern',
+            'sp',
+            'specimen',
+            'united states',
+            'unknown',
+            'upper',
+            'valley',
+            'western',
+            # COLORS
+            'blue',
+            'green',
+            'red',
+            'yellow',
+            'white',
+            'black'
+            ]
+        blacklist.extend(stopwords.words('english'))
+    keywords = []
+    words = unidecode(u'{}'.format(text).lower()).split()
+    for word in words:
+        word = word.strip('.:;,-!?()')
+        if (re.search('^[A-Za-z]+$', word)
+            and len(word) >= minlen
+            and word not in blacklist):
+            # Strip endings
+            if endings is not None:
+                for ending in endings:
+                    if word[-len(ending):] == ending:
+                        word = word[:-len(ending)]
+            # Replacements
+            if replacements is not None:
+                for find, repl in replacements.iteritems():
+                    word = word.replace(find, repl)
+            if len(word) > 2:
+                keywords.append(word)
+    return set([kw for kw in keywords if kw])
 
 
 def filter_records(records, refnum, keywords=None, dept=None):
@@ -391,20 +487,22 @@ def filter_records(records, refnum, keywords=None, dept=None):
         return []
     scored = []
     for rec in records:
-        score = -1
+        score = 0
         # Check catalog number
         try:
             catnum = rec['catalogNumber'].upper().split('|')[-1].strip()
             catnum = parser.parse_num(catnum)
         except (IndexError, KeyError, ValueError):
-            pass
+            continue
         else:
             # Exclude records with one-character prefixes if the refnum
             # is not prefixed. Other departments appear to have prefixes for
-            # internal use (e.g., PAL) that are not (or are not always) given
-            # when that specimen is cited in the literature.
+            # internal use (e.g., paleo uses PAL and V) that are not (or are
+            # not always) given when that specimen is cited in the literature.
             if not refnum.prefix and catnum.prefix and len(catnum.prefix) == 1:
-                score -= 100
+                score -= 1
+            if catnum.prefix != refnum.prefix and catnum.prefix == 'SD':
+                score -= 1
             # Exclude records that don't have the same base number
             if catnum.number != refnum.number:
                 score -= 100
@@ -418,33 +516,97 @@ def filter_records(records, refnum, keywords=None, dept=None):
         if keywords:
             # Get taxonomy
             higher_class = rec.get('higherClassification', '').lower()
-            taxa = set([t for t in higher_class.split(' | ') if t])
-            # Get geological context
-            #context = rec.get('geologicalContextID', '').lower()
-            #names = set([n for n in re.split('[: ]+', context) if len(n) > 5])
-            score += len(taxa & keywords)# + len(names & keywords)
-        if score >= 0:
+            endings = [
+                'idae',
+                'ian',
+                'ide',
+                'ine',
+                'ia',
+                'us',
+                's',
+                'a',
+                'e'
+            ]
+            replacements = {
+                'aeo': 'eo'
+            }
+            score += score_match(catnum, rec, 'higherClassification', keywords, multiplier=5, endings=endings, replacements=replacements)
+            score += score_match(catnum, rec, 'vernacularName', keywords, multiplier=3, match_all=True)
+            score += score_match(catnum, rec, ['group', 'formation', 'member'], keywords, multiplier=3)
+            score += score_match(catnum, rec, 'country', keywords, match_all=True)
+            score += score_match(catnum, rec, ['stateProvince', 'municipality', 'verbatimLocality'], keywords)
+        if score >= 1:
             scored.append([rec, score])
     if scored:
         max_score = max([s[1] for s in scored]) if scored else 0
+        #if refnum.number == 344300:
+        #    for m in scored:
+        #        print m[0]['occurrenceID'], m[1]
+        #    raw_input()
         return [m[0]['occurrenceID'] for m in scored if m[1] == max_score]
     return []
 
 
+def score_match(catnum, rec, keys, refwords, multiplier=1, match_all=False, **kwargs):
+    if not isinstance(keys, list):
+        keys = [keys]
+    if kwargs:
+        refwords = get_keywords(' '.join(refwords), **kwargs)
+    words = [rec[k] for k in keys if rec.get(k) is not None]
+    keywords = get_keywords(' '.join(words), **kwargs)
+    match = None
+    score = 0
+    if keywords:
+        match = keywords & refwords
+        if match_all and len(match) == len(keywords):
+            score = multiplier
+        elif not match_all:
+            score = multiplier * len(match)
+    # Log information about the match
+    if False:
+        if hasattr(catnum, 'prefix'):
+            catnum = Parser().stringify(catnum)
+        log = [
+            u'Catalog num:   {}'.format(catnum),
+            u'Keys:          {}'.format(keys),
+            u'Ref. keywords: {}'.format(list(refwords)),
+            u'Rec. words:    {}'.format(words),
+            u'Rec. keywords: {}'.format(list(keywords)),
+            u'Matches:       {}'.format(match),
+            u'Score:         {}'.format(score),
+            u'-' * 80
+        ]
+        LOG.write('\n'.join(log) + '\n')
+    return score
+
+
+
+
+RESULTS = []
+
 if __name__ == '__main__':
+    # Test filter_records
+    if False:
+        import pprint as pp
+        catnum = u'USNM 147442'
+        records = get_specimens(catnum)
+        keywords = get_keywords('arthropods')
+        pp.pprint(records)
+        print filter_records(records, catnum, keywords=keywords)
     # Test the catalog number parser
-    parser = Parser()
-    print '-' * 60
-    print 'Testing parser'
-    print '-' * 60
-    for val in Parser.regex['test']:
-        matches = parser.findall(val)
-        parsed = []
-        for m in matches:
-            parsed.extend(parser.parse(m))
-        print 'VERBATIM:', val
-        print 'MATCHES: ', matches
-        print 'PARSED:  ', parsed
+    if True:
+        parser = Parser()
         print '-' * 60
-        if Parser.regex['troubleshoot']:
-            break
+        print 'Testing parser'
+        print '-' * 60
+        for val in Parser.regex['test']:
+            matches = parser.findall(val)
+            parsed = []
+            for m in matches:
+                parsed.extend(parser.parse(m))
+            print 'VERBATIM:', val
+            print 'MATCHES: ', matches
+            print 'PARSED:  ', parsed
+            print '-' * 60
+            if Parser.regex['troubleshoot']:
+                break
