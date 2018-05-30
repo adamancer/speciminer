@@ -1,6 +1,15 @@
 {% include '_header.htm' %}
   <h1>{{ specimen.spec_num }}</h1>
-  <table>
+  {%- if metadata -%}
+    <table id="dwc">
+    {%- for val in metadata|dictsort -%}
+      <tr>
+        <th>{{ val[0] }}</th>
+        <td>{{ val[1] }}</td>
+      </tr>
+    {%- endfor -%}
+    </table>
+  {%- endif -%}
   {%- for doc in documents|dictsort -%}
     <h2><a href="/documents/{{ doc[0] }}">{{ doc[1]['title'] }}</a></h2>
     <ul>
@@ -9,5 +18,4 @@
     {%- endfor -%}
     </ul>
   {%- endfor -%}
-  </table>
 {% include '_footer.htm' %}

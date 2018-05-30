@@ -14,9 +14,30 @@
         <li>topic = {{ doc.doc_topic }}</li>
       {%- endif -%}
     </ul>
-    <ul>
+    <table>
+      <tr>
+        <th>Catalog number</th>
+        <th>Snippets</th>
+        <th>Links</th>
+        <th>Department</th>
+        <th>Match quality</th>
+      </tr>
     {%- for spec_num in spec_nums -%}
-      <li><a href="/specimens/{{ spec_num|urlencode }}">{{ spec_num }}</a></li>
+      <tr>
+        <td>{{ spec_num['spec_num'] }}</td>
+        <td><ul><li>{{ spec_num['snippets']|join('</li><li>')|safe }}</li></ul></td>
+        <td>
+        {%- if spec_num['ezids'] -%}
+          <ul>
+          {%- for ezid in spec_num['ezids'] -%}
+            <li><a href="/specimens/{{ ezid|urlencode }}">{{ ezid }}</a></li>
+          {%- endfor -%}
+          </ul>
+        {%- endif -%}
+        </td>
+        <td>{{ spec_num['dept'] }}</td>
+        <td>{{ spec_num['match_quality'] }}</td>
+      </tr>
     {%- endfor -%}
-    </ul>
+  </table>
 {% include '_footer.htm' %}

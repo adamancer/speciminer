@@ -1,0 +1,7 @@
+table { border-collapse: collapse; }
+table ul { padding-left: 2%; }
+td { width: 12%; padding: 1%; border: 1px solid #eee; }
+td:nth-child(2) { width: 30%; }
+th { padding: 1%; border: 1px solid #eee; }
+
+#dwc th { width: 20%; }
