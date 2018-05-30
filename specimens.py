@@ -570,7 +570,7 @@ def score_match(catnum, rec, keys, refwords, multiplier=1, match_all=False, **kw
             u'Catalog num:   {}'.format(catnum),
             u'Keys:          {}'.format(keys),
             u'Ref. keywords: {}'.format(list(refwords)),
-            u'Rec. words:    {}'.format(words),
+            u'Rec. words:    {}'.form(at(words),
             u'Rec. keywords: {}'.format(list(keywords)),
             u'Matches:       {}'.format(match),
             u'Score:         {}'.format(score),
