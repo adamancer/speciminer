@@ -1,4 +1,5 @@
 database/v*/*
+docs/*
 input/*
 output/*
 *.db
