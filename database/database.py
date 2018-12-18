@@ -1,4 +1,6 @@
 import os
+
+import yaml
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import (Column, Boolean, Integer, String, ForeignKey, create_engine)
 from sqlalchemy.orm import sessionmaker
@@ -76,14 +78,6 @@ class Link(Base):
     )
 
 
-# Get the full path to the output file
-root = os.path.splitdrive(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))[1].lstrip('/\\')
-root = root.replace('\\', '/')
-try:
-    os.mkdir(os.path.join(root, 'output'))
-except OSError:
-    pass
-engine = create_engine('/'.join(['sqlite:///', root, 'output', 'specimens.db']))
 class Part(Base):
     __tablename__ = 'parts'
 
@@ -111,5 +105,49 @@ class Taxon(Base):
         UniqueConstraint('source_id', 'taxon', name='_src_taxa'),
         Index('idx_taxa_source_id', 'source_id')
     )
+
+
+def std_path(path, delim=None):
+    """Standardizes a path to the the OS path delimiter"""
+    if delim is None:
+        delim = os.sep
+    return path.replace('/', delim).replace('\\', delim)
+
+
+def get_path(relpath, delim='/'):
+    """Converts a relative to an absolute path"""
+    relpath = std_path(relpath, delim=delim)
+    root = os.path.dirname(os.path.realpath(__file__))
+    path = os.path.realpath(os.path.join(root, relpath))
+    return path
+
+
+
+
+params = yaml.load(open(get_path('config.yml'), 'rb'))
+if params['use'] == 'sqlite':
+    path = get_path(params['sqlite']['path'])
+    try:
+        os.makedirs(os.path.dirname(path))
+    except OSError:
+        pass
+    path = os.path.splitdrive(path)[1].lstrip('/\\')
+    engine = create_engine('/'.join(['sqlite:///', path]))
+elif params['use'] == 'mysql':
+    #from sshtunnel import SSHTunnelForwarder
+    params = params['mysql']
+    #server = SSHTunnelForwarder(
+    #    params['ssh_host'],
+    #    ssh_username=params['ssh_user'],
+    #    ssh_password=params['ssh_pass'],
+    #    remote_bind_address=(params['db_host'], params['db_port'])
+    #)
+    #server.start()
+    #params.update(db_host=server.local_bind_host,
+    #              db_port=server.local_bind_port)
+    mask = 'mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}'
+    engine = create_engine(mask.format(**params))
+else:
+    raise KeyError('Unrecognized backend: %s', params['use'])
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
