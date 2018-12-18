@@ -1,10 +1,15 @@
 database/v*/*
+database/*config.yml
 docs/*
 input/*
 output/*
+
 *.db
+*.log
+*.pyc
 *.sqlite
 *.sqlite-journal
-*.pyc
+*.xml
 
 .DS_Store
+api_keys.yml
