@@ -24,7 +24,7 @@
       </tr>
     {%- for spec_num in spec_nums -%}
       <tr>
-        <td>{{ spec_num['spec_num'] }}</td>
+        <td><a href="http://supersite.local/portal?sample_id={{ spec_num['spec_num'] }}&limit=100&dept=any">{{ spec_num['spec_num'] }}</a></td>
         <td><ul><li>{{ spec_num['snippets']|join('</li><li>')|safe }}</li></ul></td>
         <td>
         {%- if spec_num['ezids'] -%}
