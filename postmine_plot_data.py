@@ -3,13 +3,33 @@
 import os
 import re
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+from cycler import cycler
+from sqlalchemy import and_, or_
 
 from database.database import Document, Link, Journal
 from database.queries import Query
 
 
 DB = Query()
+QUALITY = 'Match%'
+
+
+def parse_year(val):
+    """Attempts to parse a four-digit year from a value"""
+    try:
+        return int(val[:4])
+    except (TypeError, ValueError):
+        return 0
+
+
+def get_years(years):
+    try:
+        years.remove(0)
+    except ValueError:
+        pass
+    return [y for y in xrange(min(years), max(years) + 1)]
 
 
 def round_down(val, base=5):
@@ -21,6 +41,7 @@ def round_up(val, base=5):
 
 
 def slugify(val):
+    """Converts an arbitary value to something suitable for a filename"""
     return re.sub('[():/]', '', val.lower().strip().replace(' ', '_'))
 
 
@@ -40,7 +61,8 @@ def tabulate_citations(fn='citations.md'):
     citations = {}
     # Find citations
     query = DB.query(Link.department, Link.doc_id) \
-              .filter(Link.department != None)
+              .filter(and_(Link.department != None,
+                           Link.match_quality.like(QUALITY)))
     for row in query.all():
         try:
             citations[row.department]
@@ -62,7 +84,14 @@ def tabulate_citations(fn='citations.md'):
         topic = row.doc_topic.rstrip('?') if row.doc_topic else None
         dept = depts.get(topic)
         if dept:
-            citations[dept]['pubs_topic'].append(row.id)
+            try:
+                citations[dept]['pubs_topic'].append(row.id)
+            except:
+                citations[dept] = {
+                    'citations': 0,
+                    'pubs_cited': [],
+                    'pubs_topic': [row.id]
+                }
     rows = []
     for dept, stats in citations.iteritems():
         rows.append([dept,
@@ -115,14 +144,29 @@ def plot_citations(include=None):
             continue
         query = DB.query(Link.ezid, Document.year) \
                   .join(Document, Document.id == Link.doc_id) \
-                  .filter(Link.department == dept)
+                  .filter(and_(Link.department == dept,
+                               Link.match_quality.like(QUALITY)))
         for row in query.all():
-            data.setdefault(dept, {}).setdefault(int(row.year), []).append(1)
-        for year, citations in data[dept].iteritems():
-            data[dept][year] = len(citations)
-            years.append(int(year))
+            data.setdefault(dept, {}).setdefault(parse_year(row.year), []).append(1)
+        for year, citations in data.get(dept, {}).iteritems():
+            if year:
+                data[dept][year] = len(citations)
+                years.append(int(year))
+    # Add specimen numbers that occur in multiple snippets but could
+    # not be assigned
+    query = DB.query(Link.ezid, Document.year) \
+              .join(Document, Document.id == Link.doc_id) \
+              .filter(and_(~Link.match_quality.like(QUALITY),
+                           or_(Link.num_snippets > 2,
+                               Link.spec_num.like('__N_ ______'))))
+    dept = 'Unassigned'
+    for row in query.all():
+        data.setdefault(dept, {}).setdefault(parse_year(row.year), []).append(1)
+    for year, citations in data.get(dept, {}).iteritems():
+        data[dept][year] = len(citations)
+        years.append(int(year))
+    years = get_years(years)
     rng = '{}-{}'.format(min(years), max(years))
-    years = [y for y in xrange(min(years), max(years) + 1)]
     return _plot(data, years, include,
                  title='Citations of USNM specimens ({})'.format(rng),
                  ylabel='# citations')
@@ -139,14 +183,32 @@ def plot_papers(include=None):
             continue
         query = DB.query(Link.ezid, Document.id, Document.year) \
                   .join(Document, Document.id == Link.doc_id) \
-                  .filter(Link.department == dept)
+                  .filter(and_(Link.department == dept,
+                               Link.match_quality.like(QUALITY)))
         for row in query.all():
-            data.setdefault(dept, {}).setdefault(int(row.year), []).append(row.id)
+            data.setdefault(dept, {}).setdefault(parse_year(row.year), []).append(row.id)
+        if data:
+            for year, documents in data[dept].iteritems():
+                if year:
+                    data[dept][year] = len(set(documents))
+                    years.append(int(year))
+    # Add specimen numbers that occur in multiple snippets but could
+    # not be assigned
+    query = DB.query(Link.ezid, Document.id, Document.year) \
+              .join(Document, Document.id == Link.doc_id) \
+              .filter(and_(~Link.match_quality.like(QUALITY),
+                           or_(Link.num_snippets > 2,
+                               Link.spec_num.like('__N_ ______'))))
+    dept = 'Unassigned'
+    for row in query.all():
+        data.setdefault(dept, {}).setdefault(parse_year(row.year), []).append(row.id)
+    if data:
         for year, documents in data[dept].iteritems():
-            data[dept][year] = len(set(documents))
-            years.append(int(year))
+            if year:
+                data[dept][year] = len(set(documents))
+                years.append(int(year))
+    years = get_years(years)
     rng = '{}-{}'.format(min(years), max(years))
-    years = [y for y in xrange(min(years), max(years) + 1)]
     return _plot(data, years, include,
                  title='Publications citing USNM specimens ({})'.format(rng),
                  ylabel='# publications')
@@ -157,12 +219,12 @@ def plot_all_papers():
     data = {}
     query = DB.query(Document.id, Document.year)
     for row in query.all():
-        data.setdefault('All', {}).setdefault(int(row.year), []).append(row.id)
+        data.setdefault('All', {}).setdefault(parse_year(row.year), []).append(row.id)
     for year, documents in data['All'].iteritems():
         data['All'][year] = len(set(documents))
         years.append(int(year))
+    years = get_years(years)
     rng = '{}-{}'.format(min(years), max(years))
-    years = [y for y in xrange(min(years), max(years) + 1)]
     return _plot(data, years,
                  title='Publications mentioning USNM/NMNH ({})'.format(rng),
                  ylabel='# publications')
@@ -173,19 +235,26 @@ def _plot(data, years, include=None, **metadata):
     assert include is None or isinstance(include, list)
     labels = []
     rows = []
-    for dept in sorted(data):
+    depts = sorted(data)
+    # Shuffle unassigned to the end of the list if it exists
+    try:
+        depts.append(depts.pop(depts.index('Unassigned')))
+    except ValueError:
+        pass
+    for dept in depts:
         if include is None or dept in include:
             vals = data[dept]
             labels.append(dept.replace('Vertebrate Zoology', 'VZ'))
             rows.append([vals.get(year, 0) for year in years])
     fig = plt.figure(figsize=(7.5, 3))
     ax = fig.add_subplot(111)
+    ax.grid(axis='y', color=(0.3, 0.3, 0.3, 1), linestyle='-', linewidth=0.1, zorder=1)
     width = 0.8
     bars = []
     bottom = []
-    for row in rows:
+    for row in rows[::-1]:
         if bottom:
-            bars.append(ax.bar(years, row, width, bottom=bottom))
+            bars.append(ax.bar(years, row, width, bottom=bottom, zorder=2))
             bottom =[bottom[i] + r for i, r in enumerate(row)]
         else:
             bars.append(ax.bar(years, row, width))
@@ -194,13 +263,34 @@ def _plot(data, years, include=None, **metadata):
         getattr(ax, 'set_' + key)(val)
     ax.set_xticks(xrange(round_down(min(years) - 5, 10),
                          round_up(max(years), 10) + 5, 10))
-    plt.legend([bar[0] for bar in bars], labels, prop={'size': 7})
+    plt.legend([bar[0] for bar in bars[::-1]], labels, prop={'size': 7})
     dept = ' '.join(include) if include else ''
     fp = os.path.join('docs', slugify(dept + ' ' + metadata['title']) + '.png')
     fig.savefig(fp, dpi=300, bbox_inches='tight')
     plt.close()
 
 if __name__ == '__main__':
+    # Set colorblind-safe palette
+    colors = [
+        #(0, 0, 0),
+        (0, 73, 73),
+        (0, 146, 146),
+        (255, 109, 182),
+        (255, 182, 219),
+        (73, 0, 146),
+        (0, 109, 219),
+        (182, 109, 255),
+        (109, 182, 255),
+        (182, 219, 255),
+        (146, 0, 0),
+        (146, 73, 0),
+        (219, 209, 0),
+        (36, 255, 36),
+        (255, 255, 109),
+    ]
+    colors = [[c / 255. for c in color] for color in colors]
+    mpl.rcParams['axes.prop_cycle'] = cycler(color=colors)
+    # Construct tables and pltos
     tabulate_citations()
     plot_citations()
     plot_papers()
