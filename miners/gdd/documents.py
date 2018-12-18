@@ -1,5 +1,8 @@
 """Defines methods to analyze and search TSV files from GeoDeepDive"""
 
+import logging
+logger = logging.getLogger(__name__)
+
 import os
 import re
 import time
@@ -7,35 +10,39 @@ import time
 import requests
 
 
-# Implement the cache if requests_cache is installed
-try:
-    import requests_cache
-except ImportError:
-    pass
-else:
-    try:
-        os.mkdir('output')
-    except OSError:
-        pass
-    requests_cache.install_cache(os.path.join('output', 'cache'))
 
 
 class Document(object):
 
-    def __init__(self, rows, terms=None):
-        # Reintegrate the text from the document
+    def __init__(self, text, terms=None):
+        if isinstance(text, list):
+            self._from_lines(text, terms)
+        else:
+            self._from_blob(text, terms)
+        self.edited = self.text
+
+
+    def _from_blob(self, text, terms=None):
+        self.sentences = []
+        self.doc_id = None
+        self.text = text
+        return
+
+
+    def _from_lines(self, lines, terms=None):
         if terms is None:
-            self.sentences = [Sentence(row) for row in rows]
+            self.sentences = [Sentence(line) for line in lines]
         else:
             indexes = []
-            for i, row in enumerate(rows):
-                srow = str(row).lower()
+            for i, line in enumerate(lines):
+                sline = str(line).lower()
                 for term in terms:
-                    if term.lower() in srow:
+                    if term.lower() in sline:
                         for x in xrange(0, 5):
                             indexes.extend([i + x, i - x])
                         break
-            self.sentences = [Sentence(row) for i, row in enumerate(rows) if i in indexes]
+            self.sentences = [Sentence(line) for i, line
+                              in enumerate(lines) if i in indexes]
         self.doc_id = self.sentences[0].doc_id if self.sentences else None
         self.text = '. '.join([s.detokenize().rstrip('. ') for s in self.sentences])
 
@@ -44,9 +51,9 @@ class Document(object):
         return self.text
 
 
-    def snippets(self, val, num_chars=32, highlight=True):
+    def snippets(self, val, num_chars=32, highlight=True, zap=True):
         """Find all occurrences of a string in the document"""
-        doc = unicode(self)
+        doc = unicode(self.edited)
         snippets = []
         for i in [m.start() for m in re.finditer(r'\b' + val + r'\b', doc)]:
             i -= num_chars
@@ -66,7 +73,14 @@ class Document(object):
             if highlight:
                 snippet = snippet.replace(val, '**' + val + '**')
             snippets.append(snippet)
+        if zap:
+            self.edited = self.edited.replace(val, '')
         return snippets
+
+
+    def save(self, fp):
+        with open(fp, 'wb') as f:
+            f.write(self.text.encode('utf-8'))
 
 
     def guess_department(self):

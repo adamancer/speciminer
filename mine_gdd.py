@@ -1,4 +1,7 @@
-"""Finds occurrences of USNM specimens in the scientific literature"""
+"""Defines methods for working with the GeoDeepDive service"""
+
+import logging
+logger = logging.getLogger(__name__)
 
 import csv
 import glob
@@ -7,12 +10,16 @@ import re
 
 import yaml
 
-from specimens import Parser
-from documents import Document
+from miners.miner import Parser
+from miners.gdd.documents import Document
 from database.queries import Query
 
 
 if __name__ == '__main__':
+    try:
+        requests_cache.install_cache(os.path.join('output', 'cache'))
+    except KeyError:
+        pass
     # Ensure the input directory exists (output is created in the
     # database file)
     try:
@@ -23,7 +30,7 @@ if __name__ == '__main__':
     db = Query()
     parser = Parser()
     # Find USNM specimens in documents in input
-    terms = yaml.load(open('config.yaml', 'rb'))['terms']
+    terms = yaml.load(open('config.yml', 'rb'))['terms']
     pattern = '(' + '|'.join([t.upper() for t in terms]) + ')'
     files = glob.iglob(os.path.join('input', 'nlp352', '*'))
     for i, fp in enumerate([fp for fp in files if '.' not in fp]):
