@@ -190,8 +190,9 @@ def assign_deparment(db):
     """Assigns the department based on other citations in a given paper"""
     # Map high-quality citations for each document
     docs = {}
+    statuses = ('Matched same page', 'Matched snippet', 'Matched title')
     for row in db.query(Link).all():
-        if row.match_quality in ['MATCHED_SNIPPET', 'MATCHED_TITLE']:
+        if row.match_quality.startswith(statuses):
             docs.setdefault(row.doc_id, []).append(row.department)
         else:
             docs.setdefault(row.doc_id, []).append(None)
