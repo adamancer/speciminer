@@ -132,8 +132,8 @@ class Score(object):
 
 def _get_specimens(catnum=None, **kwargs):
     """Returns specimen metadata from the Smithsonian"""
-    url = 'http://supersite.local/portal'
-    #url = 'https://geogallery.si.edu/portal'
+    #url = 'http://supersite.local:8080/portal'
+    url = 'https://geogallery.si.edu/portal'
     headers = {'UserAgent': 'MinSciBot/0.1 (mansura@si.edu)'}
     params = {
         'dept': 'any',
@@ -281,8 +281,8 @@ def filter_records(records, refnum, keywords=None, dept=None):
         'pl': 'Paleobiology'
     }
     if dept is not None:
-        dept = depts.get(dept, dept)
-        if dept not in depts.values():
+        dept = depts.get(dept.rstrip('*'), dept)
+        if dept.rstrip('*') not in depts.values():
             raise ValueError('Bad department: {}'.format(dept))
     parser = Parser()
     try:
@@ -326,8 +326,11 @@ def filter_records(records, refnum, keywords=None, dept=None):
                 score.add('suffix', 1)
         # Check collectionCode against topic
         if dept is not None:
-            if rec.get('collectionCode') == dept:
+            if rec.get('collectionCode') == dept.rstrip('*'):
                 score.add('collectionCode', 1)
+                # Bonus half-point if department assigned contextually
+                if dept.endswith('*'):
+                    score.add('collectionCode', 0.5)
             else:
                 score.add('collectionCode', -100)
         # Check taxa against keywords
