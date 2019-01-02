@@ -2,13 +2,13 @@ table { table-layout: fixed; border-collapse: collapse; }
 td {
   vertical-align: top;
   overflow-wrap: break-word;
-  padding: 1%;
-  border: 1px solid #eee;
+  padding: 0.5%;
+  border: 1px solid #ccc;
 }
 th {
   vertical-align: top;
-  padding: 1%;
-  border: 1px solid #eee;
+  padding: 0.5%;
+  border: 1px solid #ccc;
 }
 
 td:nth-child(1) { width: 10%; }
@@ -17,9 +17,11 @@ td:nth-child(3) { width: 20%; }
 td:nth-child(4) { width: 15%; }
 td:nth-child(5) { width: 15%; }
 
+tr:nth-child(even) { background-color: #eee };
+
 table ul { padding-left: 1em; }
 li { padding: 0.25em 0; }
 
-#dwc th { width: 20%; }
+#dwc th { width: 5%; }
 
 textarea { width: 100%; }
