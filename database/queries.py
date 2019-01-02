@@ -1,5 +1,7 @@
 """Defines methods to interact with the database of citations"""
 
+import logging
+
 import datetime as dt
 import json
 import os
@@ -7,7 +9,7 @@ import re
 from collections import namedtuple
 
 import sqlalchemy
-from sqlalchemy import and_
+from sqlalchemy import and_, update
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.inspection import inspect
 
@@ -85,7 +87,6 @@ class _Query(object):
         result = self.query(table).filter_by(**unique).first()
         if not result:
             key = self.key(table, **kwargs)
-            print len(self._insert_mappings), len(self._update_mappings), len(self._objects)
             for mapping in [self._insert_mappings,
                             self._update_mappings,
                             self._objects]:
@@ -131,14 +132,48 @@ class _Query(object):
         return self.add(table, **kwargs)
 
 
-    def update(self, table, **kwargs):
+    def keys_to_cols(self, table, **kwargs):
+        stmt = {}
+        for col in getattr(table, 'c'):
+            key = str(col).split('.')[-1]
+            try:
+                stmt[col] = kwargs.pop(key)
+            except KeyError:
+                pass
+        if kwargs:
+            raise ValueError('WHERE statment could not incorporate the'
+                             ' following keys: {}'.format(kwargs))
+        return stmt
+
+
+    def update_where(self, table, where, **kwargs):
         session = self.new() if self.session is None else self.session
-        name = table.__tablename__
-        key = self.key(table, primary_only=True, **kwargs)
-        self._mappers[name] = table
-        self._update_mappings.setdefault(name, {})[key] = kwargs
-        self.iterate()
+        session.commit()
+        if isinstance(where, dict):
+            eq = self.keys_to_cols(table, **where)
+            where = [k == v for k, v in eq.iteritems()]
+        if len(where) > 1:
+            where = and_(*where)
+        else:
+            where = where[0]
+        stmt = update(table).where(where).values(**kwargs)
+        session.execute(stmt)
+        session.commit()
         return kwargs
+
+
+    def update(self, table, **kwargs):
+        where = kwargs.pop('where', None)
+        if where:
+            return self.update_where(table.__table__, where, **kwargs)
+        else:
+            session = self.new() if self.session is None else self.session
+            name = table.__tablename__
+            key = self.key(table, primary_only=True, **kwargs)
+            self._mappers[name] = table
+            self._update_mappings.setdefault(name, {})[key] = kwargs
+            self.iterate()
+            return kwargs
 
 
     def upsert(self, table, primary_key='id', **kwargs):
@@ -154,27 +189,33 @@ class _Query(object):
 
     def delete(self, table, **kwargs):
         session = self.new() if self.session is None else self.session
-        keys = [k.name for k in inspect(table).primary_key]
-        fltr = {k: kwargs.get(k) for k in keys}
-        session.query(table).filter_by(**fltr).delete()
+        #keys = [k.name for k in inspect(table).primary_key]
+        #fltr = {k: kwargs.get(k) for k in keys}
+        session.query(table).filter_by(**kwargs).delete()
         self.iterate()
 
 
     def commit(self):
         if self.session is not None and self.length:
             # Save bulk transactions
-            for key, vals in self._objects.iteritems():
-                vals = vals.values()
-                self.session.bulk_save_objects(self._mappers[key], vals)
-            self._objects = {}
-            for key, vals in self._insert_mappings.iteritems():
-                vals = vals.values()
-                self.session.bulk_insert_mappings(self._mappers[key], vals)
-            self._insert_mappings = {}
-            for key, vals in self._update_mappings.iteritems():
-                vals = vals.values()
-                self.session.bulk_update_mappings(self._mappers[key], vals)
-            self._update_mappings = {}
+            if self._objects:
+                for key, vals in self._objects.iteritems():
+                    vals = vals.values()
+                    logging.debug('Saving {:,} records in {}'.format(len(vals), key))
+                    self.session.bulk_save_objects(self._mappers[key], vals)
+                self._objects = {}
+            if self._insert_mappings:
+                for key, vals in self._insert_mappings.iteritems():
+                    vals = vals.values()
+                    logging.debug('Inserting {:,} records into {}'.format(len(vals), key))
+                    self.session.bulk_insert_mappings(self._mappers[key], vals)
+                self._insert_mappings = {}
+            if self._update_mappings:
+                for key, vals in self._update_mappings.iteritems():
+                    vals = vals.values()
+                    logging.debug('Updating {:,} records in {}'.format(len(vals), key))
+                    self.session.bulk_update_mappings(self._mappers[key], vals)
+                self._update_mappings = {}
             self.session.commit()
             # Notify user of size and time of commit
             now = dt.datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
