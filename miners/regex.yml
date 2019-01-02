@@ -29,6 +29,9 @@ join_interrupted: (AMNH|FMNH|NMNH|USNH|USNM|MCZ |YPM )([0-9] ?)+
 debug: 0
 troubleshoot: 
 testdict:
+    'NMNH 560-042': [NMNH 560042]
+    'USNM El 1732': [USNM E 11732]
+    '...internal standard (USNM 113498/1 VG-A99 [12]) were...': [USNM 113498-1]
     'NMNH 113652-53, 113655-60': [NMNH 113652, NMNH 113653, NMNH 113655, NMNH 113656, NMNH 113657, NMNH 113658, NMNH 113659, NMNH 113660]
     'USNM Type No. 10660': [USNM type no. 10660]
     'USNM 629a and 629b; 40-44': [USNM 629A, USNM 629B]

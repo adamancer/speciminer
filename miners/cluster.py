@@ -287,6 +287,15 @@ class Cluster(object):
         # well. A hyphen denotes a range, not a list, so it has a different
         # sense than the other characters included here.
         val = self.trim_bad_values(val)
+        # Check for false hyphens and spacing errors
+        if ' ' in val and len(val.replace(' ', '')) <= 10:
+            val = val.replace(' ', '')
+            logging.debug('Stripping spaces: %s', val)
+        if val.count('-') == 1:
+            n1, n2 = [s.strip() for s in val.split('-')]
+            if len(n1) <= 3 and 2 <= len(n2) <= 4:
+                val = n1 + n2
+                logging.debug('Removing bad hyphen: %s', val)
         # Don't try to cluster single numbers
         if re.search(r'^\d+[a-z]?$', val):
             logging.debug('Aborted: Value appears to be a single number')
@@ -294,6 +303,10 @@ class Cluster(object):
         # Don't try to cluster across different prefixes
         if re.search(r'\b\d+\b', val) and re.search(r'\b[A-Z]{1,3} ?\d+\b', val):
             logging.debug('Aborted: Value mixes prefixed and unprefixed numbers')
+            return val
+        # Leave values with / and a plausible suffix alone
+        if val.count('/') == 1 and val.split('/')[-1].isnumeric():
+            logging.debug('Aborted: Slash-delimited suffix')
             return val
         # Leave values with range keywords as-is
         if (re.search(self.regex['join_range'], val)

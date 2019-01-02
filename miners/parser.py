@@ -463,7 +463,7 @@ class Parser(object):
             n1, n2 = self.split_num(n1)
         same_prefix = n1.prefix == n2.prefix
         big_numbers = n1.number > 100 and n2.number > 100
-        small_diff = n2.number - n1.number < 50
+        small_diff = n2.number - n1.number < 500
         no_suffix = not n1.suffix and not n2.suffix
         n2_bigger = n2.number > n1.number
         return bool(same_prefix
