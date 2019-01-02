@@ -6,20 +6,25 @@ import logging
 import logging.config
 
 import os
+import re
 
 import requests_cache
 import yaml
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, not_
+from sqlalchemy.exc import IntegrityError
+from unidecode import unidecode
 
 from miners.link import get_specimens, filter_records, get_keywords
+from miners.topic import Topicker
 from database.database import Document, Journal, Link, Snippet, Specimen, Taxon
 from database.queries import Query
 
 
-requests_cache.install_cache(os.path.join('output', 'extend'))
+requests_cache.install_cache(os.path.join('..', '..', '..', '..', '..', '..', 'cache', 'topics'))
 
 
 def get_taxa_on_pages(pages):
+    """Get taxa on page in BHL"""
     taxa = []
     for row in db.query(Taxon).filter(Taxon.source_id.in_(set(pages))):
         taxa.append(row.taxon)
@@ -33,7 +38,7 @@ def match_spec_num(spec_num, doc_id, dept=None):
     match_quality = None
     records = get_specimens(spec_num)
     if dept is not None:
-        records = [r for r in records if r['collectionCode'] == dept]
+        records = [r for r in records if r['collectionCode'] == dept.strip('*')]
     # Get all snippets from the current paper that mention this specimen
     query = db.query(Link.spec_num,
                      Link.corrected,
@@ -85,14 +90,18 @@ def match_spec_num(spec_num, doc_id, dept=None):
         if not matches and doc.title:
             keywords = get_keywords(doc.title.lower())
             matches = filter_records(records, spec_num, keywords=keywords)
-            match_quality = 'Matched source title'
+            match_quality = 'Matched document title'
+        # Check results if department forced
+        if not matches and dept and dept.endswith('*'):
+            matches = filter_records(records, spec_num, dept=dept)
+            match_quality = 'Matched related specimens'
         # Check results against topic of paper, then journal
-        #if not matches and doc.doc_topic:
-        #    matches = filter_records(records, spec_num, keywords=keywords, dept=doc.doc_topic.rstrip('?'))
-        #    match_quality = 'Matched source topic'
+        if not matches and doc.doc_topic:
+            matches = filter_records(records, spec_num, keywords=keywords, dept=doc.doc_topic.rstrip('?*'))
+            match_quality = 'Matched document topic'
         if not matches and hasattr(doc, 'jour_topic') and doc.jour_topic:
-            matches = filter_records(records, spec_num, keywords=keywords, dept=doc.jour_topic.rstrip('?'))
-            match_quality = 'Matched series topic'
+            matches = filter_records(records, spec_num, keywords=keywords, dept=doc.jour_topic.rstrip('?*'))
+            match_quality = 'Matched journal topic'
     ezids = []
     mqs = []
     for match, score in matches:
@@ -102,7 +111,8 @@ def match_spec_num(spec_num, doc_id, dept=None):
     #    raise ValueError('%s', sorted(list(set(mqs))))
     # Check results against department
     if dept and matches:
-        mqs[0] += ' (forced department={}).'.format(dept)
+        mqs[0] += ' (forced {})'.format(dept.strip('*'))
+        mqs[0] = mqs[0].replace(' (matched collection)', '')
     return ezids, mqs[0] if matches else 'No match', snippets, records
 
 
@@ -113,6 +123,8 @@ def link_citation(row, dept=None):
         spec_num = spec_num.replace(' 0', ' ')
     if spec_num.startswith('USNH'):
         dept = 'Botany'
+    elif row.department and row.department.endswith('*'):
+        dept = row.department
     matches, match_quality, snippets, records = match_spec_num(spec_num,
                                                                row.doc_id,
                                                                dept=dept)
@@ -120,22 +132,29 @@ def link_citation(row, dept=None):
         matches, match_quality, snippets, records = match_spec_num(spec_num.split('-')[0],
                                                                    row.doc_id,
                                                                    dept=dept)
+    if not matches and re.search('\d[A-Z]$', spec_num):
+        matches, match_quality, snippets, records = match_spec_num(spec_num[:-1],
+                                                                   row.doc_id,
+                                                                   dept=dept)
+
     print '  {}'.format(match_quality)
     # Record matches if any of the quality checks yield a hit
     num_specimens = 0
     if matches:
         ezids = ' | '.join(matches)
         records = [rec for rec in records if rec['occurrenceID'] in ezids]
-        depts = list(set([rec['collectionCode'] for rec in records]))
+        dept = list(set([rec['collectionCode'] for rec in records]))[0]
+        if 'forced' in match_quality:
+            dept += '*'
         db.update(Link,
                   id=row.id,
                   ezid=ezids,
                   match_quality=match_quality,
-                  department=depts[0],
-                  num_snippets=len(snippets))
+                  department=dept,
+                  num_snippets=None)
         row.ezids = ezids
         row.match_quality = match_quality
-        row.department = depts[0]
+        row.department = dept
         num_specimens = 1
     else:
         db.update(Link,
@@ -143,7 +162,7 @@ def link_citation(row, dept=None):
                   ezid=None,
                   match_quality='No match',
                   department=None,
-                  num_snippets=len(snippets))
+                  num_snippets=None)
         row.match_quality = 'No match'
     # Update journals
     if db.length > db.max_length:
@@ -159,70 +178,143 @@ def link_citation(row, dept=None):
     return row
 
 
-def clear_old_links(db):
-    """Clears existing links"""
-    # FIXME: Make this one query, you idiot
-    for row in db.query(Link) \
-                 .filter(and_(Link.match_quality != 'Matched manually',
-                              Link.match_quality != None)).all():
-        db.update(Link,
-                  id=row.id,
-                  ezid=None,
-                  match_quality=None,
-                  department=None,
-                  num_snippets=None)
+def clear_bad_links(db):
+    """Clears unmatched specimens"""
+    where = {'match_quality': 'No match'}
+    db.update(Link, where=where, department=None, ezid=None, match_quality=None)
+    db.commit()
+
+
+def clear_existing_links(db):
+    """Clears existing links with NMNH specimens"""
+    print 'Clearing existing links...'
+    where = [
+        Links.__table__.c.match_quality != 'Matched manually',
+        Links.__table__.c.match_quality != None
+    ]
+    db.update(Link,
+              where=where,
+              ezid=None,
+              department=None,
+              match_quality=None,
+              num_snippets=None,
+              notes=None)
     db.commit()
 
 
 def clear_failed_links(db):
     """Clears failed links"""
-    query = db.query(Link).filter(Link.match_quality == 'NO_MATCH')
-    for row in query.all():
-        db.update(Link,
-                  id=row.id,
-                  ezid=None,
-                  match_quality=None,
-                  num_snippets=None)
+    db.update(Link,
+              where={'match_quality': 'No match'},
+              ezid=None,
+              department=None,
+              match_quality=None,
+              num_snippets=None,
+              notes=None)
     db.commit()
 
 
-def assign_deparment(db):
-    """Assigns the department based on other citations in a given paper"""
-    # Map high-quality citations for each document
-    docs = {}
-    statuses = ('Matched same page', 'Matched snippet', 'Matched title')
-    for row in db.query(Link).all():
-        if row.match_quality.startswith(statuses):
-            docs.setdefault(row.doc_id, []).append(row.department)
-        else:
-            docs.setdefault(row.doc_id, []).append(None)
-
-    for doc_id, depts in docs.iteritems():
-        dept = guess_department(depts)
-        if dept is not None:
-            db.update(Link, primary_key='doc_id', doc_id=doc_id, department=dept)
+def clear_multiple_links(db):
+    """Clears links that point to multiple objects"""
+    where = [Link.__table__.c.ezid.like('%|%')]
+    db.update(Link,
+              where=where,
+              ezid=None,
+              department=None,
+              match_quality=None,
+              num_snippets=None,
+              notes=None)
     db.commit()
 
 
-def assign_department_to_doc(rows, depts):
-    """Assigns department based on other citations in a single paper"""
-    dept = guess_department(depts)
-    if dept:
+def clear_starred_links(db):
+    """Clears links made by forcing the department"""
+    where = [Link.__table__.c.department.like('%*')]
+    db.update(Link,
+              where=where,
+              ezid=None,
+              department=None,
+              match_quality=None,
+              num_snippets=None,
+              notes=None)
+    db.commit()
+
+
+def clear_dept_from_unmatched(db):
+    """Clear extrapolated department names from links"""
+    where = [and_(Link.__table__.c.department.like('%*'),
+                  or_(Link.__table__.c.match_quality == None,
+                      Link.__table__.c.match_quality == 'No match'))]
+    db.update(Link, where=where, department=None)
+    db.commit()
+
+
+def flag_suspect_suffixes(db):
+    """Identify and flag suspect suffixes"""
+    db.update(Link, where={'corrected': '[BAD_SUFFIX]'}, corrected=None)
+    pattern = re.compile(r'-([A-Z]{3,}|\])$')
+    for row in db.query(Link.id, Link.spec_num).filter(Link.corrected == None):
+        if pattern.search(row.spec_num):
+            print 'Fixing {}...'.format(row.spec_num)
+            spec_num = row.spec_num.rsplit('-', 1)[0]
+            try:
+                db.update(Link, id=row.id, spec_num=spec_num)
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                db.update(Link, id=row.id, corrected='[BAD_SUFFIX]')
+                db.commit()
+    # Perform the same operation in specimens. This is much simpler because
+    # there is no onerous uniqueness constraint.
+    for row in db.query(Specimen.id, Specimen.spec_num).all():
+        if pattern.search(row.spec_num):
+            print 'Fixing {}...'.format(row.spec_num)
+            spec_num = row.spec_num.rsplit('-', 1)[0]
+            db.update(Specimen, id=row.id, spec_num=spec_num)
+    db.commit()
+
+
+def flag_unlikely_suffixes(db):
+    rows = db.query(Link) \
+             .filter(Link.spec_num.like('%-%'),
+                     Link.corrected == None)
+    for i, row in enumerate(rows):
+        print 'Fixing {}...'.format(row.spec_num)
+        if row.department and row.department.startswith('Min'):
+            continue
+        spec_num = row.spec_num.rsplit('-', 1)[0]
+        try:
+            db.update(Link, id=row.id, spec_num=spec_num)
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            db.update(Link, id=row.id, corrected='[UNLIKELY_SUFFIX]')
+            db.commit()
+        if i and not i % 10000:
+            print ' {:,} rows examined'
+    db.commit()
+
+
+def flag_truncations(db):
+    """Identify and flag apparent truncations"""
+    db.update(Link, where={'corrected': '[TRUNCATED]'}, corrected=None)
+    query = db.query(Link.doc_id).filter(Link.corrected == None)
+    for i, row in enumerate(query.distinct()):
+        doc_id = row.doc_id
+        rows = db.query(Link.id, Link.spec_num).filter_by(doc_id=doc_id)
+        spec_nums = [row.spec_num for row in rows.distinct()]
         for row in rows:
-            if row.department != dept:
-                link_citation(row, dept=dept)
-
-
-
-def guess_department(depts):
-    """Guesses the department based on other citations in the current paper"""
-    counts = {}
-    for dept in set(depts):
-        counts[dept] = depts.count(dept)
-    for dept, count in counts.iteritems():
-        if ((count / len(depts) > 0.7 and count > 20)
-            or (len(counts) == 1 and count >= 5)):
-            return dept
+            startswith = [s for s in spec_nums
+                          if (s and
+                              s != row.spec_num
+                              and s.startswith(row.spec_num))]
+            if startswith:
+                print row.spec_num, '=>', startswith
+                db.update(Link, id=row.id, corrected='[TRUNCATION]')
+                #db.delete(Links, spec_num=row.spec_num, doc_id=doc_id)
+        if i and not i % 10000:
+            print ' {:,} rows examined'
+    db.commit()
 
 
 def match_citations(db):
@@ -231,38 +323,42 @@ def match_citations(db):
     rerun = []
     depts = []
     rows = db.query(Link) \
-              .filter(or_(Link.match_quality == None), #, Link.match_quality == 'No match'),
+              .filter(or_(Link.match_quality == None,
+                          Link.match_quality == 'No match'),
                       or_(Link.spec_num.like('USNH%'),
                           Link.spec_num.like('USNM%'),
                           Link.spec_num.like('NMNH%'))) \
               .order_by(Link.doc_id) \
               .all()
     for i, row in enumerate(rows):
-        print ('Matching row... ({:,}/{:,})'.format(i, len(rows)))
+        print ('Matching row... ({:,}/{:,})'.format(i + 1, len(rows)))
+        # NOTE: Moved this functionality to postflight
         # Check if this is a new document. If so, check if the previous
         # document can be assigned to one department and re-identify rows that
         # missed completely or that matched a different department. For
         # example, if a a document cites 100 specimens from mammals but has
         # 20 more unmatched specimens, it's a reasonable guess that those
         # specimens also come from mammals.
-        if row.doc_id != doc_id:
-            assign_department_to_doc(rerun, depts)
-            # Reset doc info for new document
-            doc_id = row.doc_id
-            depts = []
-            rerun = []
+        #if row.doc_id != doc_id:
+        #    assign_department_to_doc(rerun, depts)
+        #    # Reset doc info for new document
+        #    doc_id = row.doc_id
+        #    depts = []
+        #    rerun = []
         # Process row
         row = link_citation(row)
-        if row.department:
-            depts.append(row.department)
-        rerun.append(row)
-    else:
-        assign_department_to_doc(rerun, depts)
+        #if row.department:
+        #    depts.append(row.department)
+        #rerun.append(row)
+    #else:
+    #    assign_department_to_doc(rerun, depts)
     db.commit()
+
 
 
 def count_citations(db, reset=False):
     """Counts citations for each paper"""
+    print 'Counting citations for each paper...'
     if reset:
         for row in db.query(Document).filter(Document.num_specimens > 0).all():
             db.update(Document, id=row.id, num_specimens=0)
@@ -270,7 +366,27 @@ def count_citations(db, reset=False):
     for row in db.query(Link.doc_id).filter(Link.ezid != None).all():
         docs.setdefault(row.doc_id, []).append(1)
     for doc_id, rows in docs.iteritems():
+        print ' {} => {:,}'.format(doc_id, len(rows))
         db.update(Document, id=doc_id, num_specimens=len(rows))
+    db.commit()
+
+
+def count_snippets(db):
+    """Counts the number of snippets in which each specimen is found"""
+    print 'Counting snippets for each specimen number...'
+    snippets = {}
+    for row in db.query(Specimen.snippet_id,
+                        Specimen.spec_num,
+                        Snippet.doc_id) \
+                 .join(Snippet, Snippet.id == Specimen.snippet_id) \
+                 .all():
+        snippets.setdefault(row.doc_id, {}) \
+                .setdefault(row.spec_num, []) \
+                .append(row.snippet_id)
+    for row in db.query(Link.id, Link.doc_id, Link.spec_num).all():
+        num_snippets = len(set(snippets.get(row.doc_id, {}) \
+                                       .get(row.spec_num, [])))
+        db.update(Link, id=row.id, num_snippets=num_snippets)
     db.commit()
 
 
@@ -481,13 +597,36 @@ if __name__ == '__main__':
     logging.config.dictConfig(yaml.load(open('logging.yml', 'rb')))
     # Set up database query engine
     db = Query(max_length=10000)
-    # Clear links if desired
-    if False:
-        clear_old_links(db)
-    # Assign department based on other specimens in the same paper
-    if False:
-        assign_department(db)
-    # Match specimens to catalog records
+    # Preflight
+    #clear_existing_links(db)
+    #clear_bad_links(db)
+    clear_failed_links(db)
+    #clear_multiple_links(db)
+    clear_starred_links(db)
+    clear_dept_from_unmatched(db)
+    #flag_suspect_suffixes(db)
+    #flag_unlikely_suffixes(db)
+    #flag_truncations(db)
+    # Assign topics
+    if True:
+        db.update(Document, where=[Document.__table__.c.topic.like('%*')], topic=None)
+        db.update(Journal, where=[Journal.__table__.c.topic.like('%*')], topic=None)
+        #assign_doc_topic_from_links(db)
+        assign_doc_topic_from_title(db)
+        assign_journal_topic_from_title(db)
+        assign_department_from_related(db)
+        assign_department_from_doc(db)
+        #raw_input('paused')
+    #count_citations(db, True)
+    #count_snippets(db)
+    # Main event`
     match_citations(db)
+    #assign_doc_topic_from_links(db)
+    #assign_department_from_related(db)
+    #assign_department_from_doc(db)
+    #clear_failed_links(db)
+    #match_citations(db)
+    # Postflight
     count_citations(db, True)
+    count_snippets(db)
     db.commit().close()
