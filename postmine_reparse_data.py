@@ -32,12 +32,14 @@ if __name__ == '__main__':
     print 'Parsing catalog numbers from snippets...'
     parser = Parser()
 
+    print 'Deleting existing catalog numbers...'
     db.query(Link).delete()
     db.query(Specimen).delete()
     db.commit()
 
     # Identify sneaky duplicates in the snippets table. These are typically
     # snippets that occur twice with different specimen numbers highlighted.
+    print 'Clearing duplicate snippets...'
     snippets = {}
     for row in db.query(Snippet).all():
         pre, target, post = get_target(row.snippet)
@@ -54,6 +56,7 @@ if __name__ == '__main__':
 
     # Re-parse all snippets, extracting catalog numbers and re-highlighting
     # the snippets
+    print 'Parsing snippets...'
     for row in db.query(Snippet).all():
         # Update snippet
         pre, target, post = get_target(row.snippet)
