@@ -56,7 +56,8 @@ class Specimen(Base):
     verbatim = Column(String(collation='nocase'), nullable=False)
     spec_num = Column(String(collation='nocase'), nullable=False)
     __table_args__ = (
-        Index('idx_specimens_snippet_id', 'snippet_id'),
+        UniqueConstraint('snippet_id', 'verbatim', 'spec_num', name='_spec_snippet'),
+        Index('idx_specimens_snippet_id', 'snippet_id')
     )
 
 
