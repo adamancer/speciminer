@@ -1,0 +1,15 @@
+anthropo[a-z]*
+archa?eolog[a-z]*
+
+afarensis
+australopithecine
+clovis
+eskimos?
+hom(o|inids?)
+humans
+indigenous
+neandertal[a-z]*
+neolithic
+osteolog[a-z]*
+pala?eolithic
+treponematosis

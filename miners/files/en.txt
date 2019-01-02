@@ -1,0 +1,10 @@
+entomolog[a-z]*
+
+acari
+beetle[a-z]*
+butterfl(y|ies)
+caterpillars?
+(centi|milli)pedes?
+insect[a-z]*
+mites?
+wasps?

@@ -1,0 +1,16 @@
+ornitholog[a-z]*
+
+babblers?
+birds?
+cranes?
+eagles?
+hawks?
+falcons?
+gulls?
+martens?
+nightjars?
+owls?
+petrels?
+sparrow?
+thrush(es)?
+warbler?
