@@ -1,5 +1,5 @@
 {% include '_header.htm' %}
-  <h1>{{ specimen.spec_num }}</h1>
+  <h1>{{ specimen.corrected if specimen.corrected else specimen.spec_num }}</h1>
   {%- if metadata -%}
     <table id="dwc">
     {%- for val in metadata|dictsort -%}

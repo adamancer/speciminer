@@ -9,7 +9,7 @@ import json
 import re
 
 from flask import Flask, make_response, render_template, request
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 
 from database.database import Document, Journal, Link, Part, Specimen, Snippet
 from database.queries import Query
@@ -48,6 +48,7 @@ def finder():
     return render_template('finder.htm', text=text, specimens=specimens, docinfo=docinfo)
 
 
+@app.route('/')
 @app.route('/documents')
 def documents():
     db = Query()
@@ -77,37 +78,46 @@ def document(doc_id):
     logging.debug(query)
     doc = query.first()
     # Get specimen info
-    query = db.query(Snippet.snippet,
-                     Link.id,
+    query = db.query(Link.id,
                      Link.spec_num,
+                     Link.corrected,
                      Link.ezid,
                      Link.department,
-                     Link.match_quality) \
-              .join(Specimen, Specimen.snippet_id == Snippet.id) \
-              .join(Link, Link.spec_num == Specimen.spec_num) \
-              .filter(Snippet.doc_id == doc_id)
+                     Link.match_quality,
+                     Snippet.snippet) \
+              .join(Specimen, Link.spec_num == Specimen.spec_num) \
+              .join(Snippet, Specimen.snippet_id == Snippet.id) \
+              .filter(Link.doc_id == doc_id,
+                      Snippet.doc_id == doc_id,
+                      or_(Link.spec_num.like('NMNH%'),
+                          Link.spec_num.like('USNM%')))
     logging.debug(query)
     rows = query.all()
     spec_nums = {}
+    mapped = {}
     for row in rows:
-        logging.debug(row.spec_num)
+        spec_num = row.spec_num
+        if row.corrected:
+            spec_num = row.corrected
+            mapped[row.spec_num] = row.corrected
         ezids = [s.strip() for s in row.ezid.split('|')] if row.ezid else []
         try:
-            spec_nums[row.spec_num]['ezids'].extend(ezids)
-            spec_nums[row.spec_num]['ezids'] = sorted(list(set(spec_nums[row.spec_num]['ezids'])))
+            spec_nums[spec_num]['ezids'].extend(ezids)
+            spec_nums[spec_num]['ezids'] = sorted(list(set(spec_nums[spec_num]['ezids'])))
         except KeyError:
-            spec_nums[row.spec_num] = {
-                'spec_num': row.spec_num,
+            spec_nums[spec_num] = {
+                'spec_num': spec_num,
                 'ezids': ezids,
                 'dept': row.department,
                 'match_quality': row.match_quality,
                 'snippets': []
                 }
         else:
-            if not spec_nums[row.spec_num]['dept']:
-                spec_nums[row.spec_num]['dept'] = row.department
-            if not spec_nums[row.spec_num]['match_quality']:
-                spec_nums[row.spec_num]['match_quality'] = row.match_quality
+            if not spec_nums[spec_num]['dept']:
+                spec_nums[spec_num]['dept'] = row.department
+            if (spec_nums[spec_num]['match_quality'] == 'No match'
+                or not spec_nums[spec_num]['match_quality']):
+                    spec_nums[spec_num]['match_quality'] = row.match_quality
     spec_nums = spec_nums.values()
     # Find related snippets
     query = db.query(Snippet.snippet, Specimen.spec_num) \
@@ -115,9 +125,10 @@ def document(doc_id):
               .filter(and_(Snippet.doc_id == doc_id))
     snippets = {}
     for row in query.all():
-        snippets.setdefault(row.spec_num, []).append(row.snippet)
+        spec_num = mapped.get(row.spec_num, row.spec_num)
+        snippets.setdefault(spec_num, []).append(row.snippet)
     for spec_num in spec_nums:
-        spec_num['snippets'] = snippets[spec_num['spec_num']]
+        spec_num['snippets'] = sorted(list(set(snippets[spec_num['spec_num']])))
     spec_nums.sort(key=lambda s: s['spec_num'])
     return render_template('document.htm', doc=doc, spec_nums=spec_nums)
 
@@ -130,6 +141,7 @@ def specimen(ezid):
     if metadata:
         metadata = metadata[0]
     query = db.query(Link.spec_num,
+                     Link.corrected,
                      Link.ezid,
                      Link.doc_id,
                      Snippet.snippet,
