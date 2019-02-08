@@ -3,6 +3,8 @@ database/*config.yml
 docs/*
 input/*
 output/*
+mine_gdd_journals_*
+migrate.py
 
 *.db
 *.log
