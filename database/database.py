@@ -108,6 +108,21 @@ class Taxon(Base):
     )
 
 
+class DocCount(Base):
+    __tablename__ = 'doccounts'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    kind = Column(String)
+    year = Column(Integer)
+    num_articles = Column(Integer)
+    # Define indexes
+    __table_args__ = (
+        UniqueConstraint('name', 'kind', 'year', name='_name_kind_year'),
+        Index('idx_name_kind_year', 'name', 'kind', 'year')
+    )
+
+
 def std_path(path, delim=None):
     """Standardizes a path to the the OS path delimiter"""
     if delim is None:
