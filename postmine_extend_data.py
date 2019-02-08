@@ -590,6 +590,24 @@ def assign_journal_topic_from_title(db):
     db.max_length = max_length
 
 
+def analyze_titles(db):
+    keywords = {}
+    for row in db.query(Document).filter(Document.topic != None).all():
+        words = [w for w in re.split(r'\W', row.title.lower()) if len(w) > 3]
+        for word in words:
+            word = word.rstrip('s')
+            keywords.setdefault(word, []).append(row.topic.rstrip('*'))
+    for word in sorted(keywords):
+        topics = keywords[word]
+        if len(topics) > 2 and len(set(topics)) == 1:
+            print word, '=>', topics[0], '(n={})'.format(len(topics))
+            keywords[word] = topics[0]
+        else:
+            del keywords[word]
+    return keywords
+
+
+
 
 
 if __name__ == '__main__':
@@ -597,9 +615,11 @@ if __name__ == '__main__':
     logging.config.dictConfig(yaml.load(open('logging.yml', 'rb')))
     # Set up database query engine
     db = Query(max_length=10000)
+    analyze_titles(db)
+    raw_input('paused')
     # Preflight
     #clear_existing_links(db)
-    #clear_bad_links(db)
+    clear_bad_links(db)
     clear_failed_links(db)
     #clear_multiple_links(db)
     clear_starred_links(db)
@@ -609,6 +629,7 @@ if __name__ == '__main__':
     #flag_truncations(db)
     # Assign topics
     if True:
+        count_citations(db, reset=True)
         db.update(Document, where=[Document.__table__.c.topic.like('%*')], topic=None)
         db.update(Journal, where=[Journal.__table__.c.topic.like('%*')], topic=None)
         #assign_doc_topic_from_links(db)
