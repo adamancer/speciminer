@@ -328,6 +328,28 @@ class Topicker(object):
             return dept
 
 
+    def get_department2(self, text, **kwargs):
+        logging.debug(u'Matching department in "{}"'.format(text))
+        # Check keyword lists for non-biological collections, including paleo
+        dept, match = self.match_dept_keywords(text, j=3)
+        if dept:
+            return dept
+        # Check mappings and hints for a previously encountered match
+        words = [s.lower() for s in re.split(ur'\W', text) if s]
+        for mapping in self.mappings:
+            if mapping.value.lower() in words:
+                return mapping.dept
+        for key, dept in self.hints.items():
+            if key.lower() in [s.lower() for s in words]:
+                logging.debug(u'Matched {}={} in hints'.format(key, dept))
+                return dept
+        # Proceed with the more complex search since no easy match was found
+        stop = False
+        depts = {}
+        names = self.get_names(text, **kwargs)
+        self.resolve_names(names)
+
+
     def add_hint(self, hierarchy, dept):
         # Add order and family to hints
         for rank in ['phylum',
@@ -353,8 +375,7 @@ class Topicker(object):
 if __name__ == '__main__':
     import requests_cache
     requests_cache.install_cache()
-    title = 'New species and distribution of the genus Marilia Muller (Trichoptera: Odontoceridae) in Mexico and Central America'
+    title = u'New species and distribution of the genus Marilia Muller (Trichoptera: Odontoceridae) in Mexico and Central America'
     print 'Analyzing "{}"...'.format(title)
-    topic = Topicker(title)
-    dept = topic.get_department()
-    print dept
+    topicker = Topicker()
+    print topicker.get_department2(title)
