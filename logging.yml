@@ -5,20 +5,20 @@ formatters:
 handlers:
   console:
     class: logging.StreamHandler
-    level: INFO
+    level: DEBUG
     formatter: simple
     stream: ext://sys.stdout
   file:
     class: logging.FileHandler
-    level: INFO
+    level: DEBUG
     formatter: simple
     filename: output/speciminer.log
     mode: wb
 loggers:
   simpleExample:
-    level: INFO
+    level: DEBUG
     handlers: [console]
     propagate: no
 root:
-  level: INFO
+  level: DEBUG
   handlers: [file]

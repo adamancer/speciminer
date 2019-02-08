@@ -1,5 +1,14 @@
 """Defines methods to work with USNM catalog numbers and specimen data"""
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+from __future__ import division
 
+from builtins import str
+from builtins import range
+from past.builtins import basestring
+from builtins import object
+from past.utils import old_div
 import logging
 logger = logging.getLogger(__name__)
 
@@ -13,7 +22,7 @@ import requests
 import yaml
 from unidecode import unidecode
 
-from cluster import Cluster, epen
+from .cluster import Cluster, epen
 
 
 IndexedSnippet = namedtuple('IndexedSnippet', ['text', 'start', 'end'])
@@ -23,7 +32,7 @@ SpecNum = namedtuple('SpecNum', ['code', 'prefix', 'number', 'suffix'])
 class Parser(object):
 
     def __init__(self):
-        self.regex = yaml.load(epen(os.path.abspath('regex.yml'), 'rb'))
+        self.regex = yaml.load(epen(os.path.abspath('regex.yml'), 'r'))
         self.regex['catnum'] = self.regex['catnum'].format(**self.regex)
         self.mask = re.compile(self.regex['mask'].format(**self.regex))
         self.simple = re.compile(self.regex['simple'])
@@ -40,7 +49,7 @@ class Parser(object):
     def sprint(self, *msg):
         if self.regex['debug']:
             try:
-                print ' '.join([s if isinstance(s, basestring) else repr(s) for s in msg]).encode('cp1252')
+                print(' '.join([s if isinstance(s, basestring) else repr(s) for s in msg]).encode('cp1252'))
             except UnicodeEncodeError:
                 pass
 
@@ -403,7 +412,7 @@ class Parser(object):
                 for key in pairs:
                     filtered = filtered.replace(key, '')
                 if not filtered[:-1].isalpha():
-                    for search, repl in pairs.iteritems():
+                    for search, repl in pairs.items():
                         word = word.replace(search, repl)
                 words.append(word)
             return ''.join(words)
@@ -419,7 +428,7 @@ class Parser(object):
             n2 = SpecNum(n2.code, n1.prefix, n2.number, n2.suffix)
         if self.is_range(n1, n2):
             return [SpecNum(self.code, n1.prefix, n, '')
-                    for n in xrange(n1.number, n2.number + 1)]
+                    for n in range(n1.number, n2.number + 1)]
         # Range parse failed!
         return [n1, n2] if not derived_n2 else [n1]
 
@@ -476,7 +485,7 @@ class Parser(object):
     def short_range(self, n1, n2):
         """Expands numbers to test for short ranges (e.g., 123456-59)"""
         x = 10.**(len(str(n2.number)))
-        num = int(math.floor(n1.number / x) * x) + n2.number
+        num = int(math.floor(old_div(n1.number, x)) * x) + n2.number
         n2 = SpecNum(n2.code, n2.prefix, num, n2.suffix)
         return n1, n2
 
@@ -484,7 +493,7 @@ class Parser(object):
     def short_discrete(self, n1, n2):
         """Expands shorthand numbers (e.g., 194383-85/87/92/93/99)"""
         x = 10.**(len(str(n2.number)))
-        num = int(math.floor(n1.number / x) * x) + n2.number
+        num = int(math.floor(old_div(n1.number, x)) * x) + n2.number
         n2 = SpecNum(n2.code, n2.prefix, num, n2.suffix)
 
 
@@ -497,8 +506,8 @@ if __name__ == '__main__':
         val = 'USNM 201 1 17, 201 1 19, 201 120a, b, d-f, and 201 123a-c'
         val = 'USNM 200961, 200982a, c, e, 201182a-e, 201183a, 201184'
         clustered = parser.cluster(val)
-        print 'VERBATIM:  ', val
-        print 'CLUSTERED: ', clustered
+        print('VERBATIM:  ', val)
+        print('CLUSTERED: ', clustered)
     # Test filter_records
     if False:
         import pprint as pp
@@ -506,22 +515,22 @@ if __name__ == '__main__':
         records = get_specimens(catnum)
         keywords = get_keywords('arthropods')
         pp.pprint(records)
-        print filter_records(records, catnum, keywords=keywords)
+        print(filter_records(records, catnum, keywords=keywords))
     # Test the catalog number parser
     if False:
         parser = Parser()
-        print '-' * 60
-        print 'Testing parser'
-        print '-' * 60
+        print('-' * 60)
+        print('Testing parser')
+        print('-' * 60)
         for val in parser.regex['test']:
             matches = parser.findall(val)
             parsed = []
             for m in matches:
                 parsed.extend(parser.parse(m))
-            print 'VERBATIM:', val
-            print 'MATCHES: ', matches
-            print 'PARSED:\n ', '\n  '.join(parsed)
-            print '-' * 60
+            print('VERBATIM:', val)
+            print('MATCHES: ', matches)
+            print('PARSED:\n ', '\n  '.join(parsed))
+            print('-' * 60)
             if parser.regex['troubleshoot']:
                 break
     if True:
@@ -536,9 +545,9 @@ if __name__ == '__main__':
                 for m in matches:
                     parsed.extend(parser.parse(m))
                 if set(parsed) != set(expected):
-                    print u'{}: Failed'.format(key)
-                    print u'    Found  :', parsed
-                    print u'    Missing:', sorted(list(set(expected) - set(parsed)))
-                    print u'    Extra  :', sorted(list(set(parsed) - set(expected)))
+                    print(u'{}: Failed'.format(key))
+                    print(u'    Found  :', parsed)
+                    print(u'    Missing:', sorted(list(set(expected) - set(parsed))))
+                    print(u'    Extra  :', sorted(list(set(parsed) - set(expected))))
                 elif parser.regex['troubleshoot']:
-                    print u'{}: Passed'.format(key)
+                    print(u'{}: Passed'.format(key))

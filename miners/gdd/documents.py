@@ -1,5 +1,11 @@
 """Defines methods to analyze and search TSV files from GeoDeepDive"""
+from __future__ import absolute_import
+from __future__ import unicode_literals
 
+from builtins import zip
+from builtins import str
+from builtins import range
+from builtins import object
 import logging
 logger = logging.getLogger(__name__)
 
@@ -9,7 +15,7 @@ import time
 
 import requests
 
-from api import get_document, get_documents
+from .api import get_document, get_documents
 
 
 
@@ -40,7 +46,7 @@ class Document(object):
                 sline = str(line).lower()
                 for term in terms:
                     if term.lower() in sline:
-                        for x in xrange(0, 5):
+                        for x in range(0, 5):
                             indexes.extend([i + x, i - x])
                         break
             self.sentences = [Sentence(line) for i, line
@@ -55,7 +61,7 @@ class Document(object):
 
     def snippets(self, val, num_chars=32, highlight=True, zap=True):
         """Find all occurrences of a string in the document"""
-        doc = unicode(self.edited)
+        doc = str(self.edited)
         snippets = []
         for i in [m.start() for m in re.finditer(r'\b' + val + r'\b', doc)]:
             i -= num_chars
@@ -81,13 +87,13 @@ class Document(object):
 
 
     def save(self, fp):
-        with open(fp, 'wb') as f:
+        with open(fp, 'w') as f:
             f.write(self.text.encode('utf-8'))
 
 
     def guess_department(self):
         """Tries to guess the department based on available text"""
-        text = unicode(self).lower()
+        text = str(self).lower()
         keywords = {
             'anthropol': 'an',
             'amphibian': 'hr',
@@ -107,7 +113,7 @@ class Document(object):
             'reptil': 'hr'
         }
         results = {}
-        for kw, dept in keywords.iteritems():
+        for kw, dept in keywords.items():
             count = text.count(kw)
             if count:
                 try:
@@ -115,7 +121,7 @@ class Document(object):
                 except KeyError:
                     results[dept] = count
         if results:
-            dept, count = sorted(results.iteritems(), key=lambda v: v[1])[-1]
+            dept, count = sorted(iter(results.items()), key=lambda v: v[1])[-1]
             if count < 10:
                 dept += '?'
             return dept
@@ -163,7 +169,7 @@ class Sentence(object):
 
     def snippet(self, val, num_chars=32, highlight=True):
         """Gets the snippet around the given string in the sentence"""
-        sentence = unicode(self)
+        sentence = str(self)
         i = sentence.index(val) - num_chars
         j = i + len(val) + 2 * num_chars
         if i < 0:

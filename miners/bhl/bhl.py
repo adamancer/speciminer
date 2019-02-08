@@ -1,5 +1,9 @@
 """"Defines tools for working with the BHL v3 endpoint"""
+from __future__ import print_function
+from __future__ import unicode_literals
 
+from builtins import str
+from builtins import range
 import logging
 logger = logging.getLogger(__name__)
 
@@ -29,7 +33,7 @@ API_KEY = yaml.load(open(os.path.join(
                             os.path.dirname(__file__),
                             '..',
                             '..',
-                            'api_keys.yml'), 'rb'))['bhl_api_key']
+                            'api_keys.yml'), 'r'))['bhl_api_key']
 PARSER = Parser()
 DB = Query()
 
@@ -53,7 +57,7 @@ def _get(op, **params):
 
 def get(op, **params):
     kill_codes = [400, 401, 402, 403, 404, 500]
-    for i in xrange(1, 13):
+    for i in range(1, 13):
         response = _get(op, **params)
         if response.status_code == 200:
             break
@@ -62,7 +66,7 @@ def get(op, **params):
             break
         else:
             logging.error('Failed to resolve %s (code=%s). Retrying...', response.url, response.status_code)
-            print 'Retrying in {} seconds...'.format(2**i)
+            print('Retrying in {} seconds...'.format(2**i))
             time.sleep(2**i)
     return etree.fromstring(response.content)
 
@@ -176,7 +180,7 @@ def extract_names():
     DB.bulk = True
     rows = DB.query(Snippet.page_id).distinct()
     for i, row in enumerate(rows):
-        print 'Checking for names in {} ({:,}/{:,})...'.format(row.page_id, i, rows.count())
+        print('Checking for names in {} ({:,}/{:,})...'.format(row.page_id, i, rows.count()))
         if row.page_id is not None:
             page_id = int(row.page_id.split(':')[-1])
             root = get_page_metadata(page_id, name='true', ocr='false')
@@ -188,14 +192,14 @@ def extract_names():
 
 
 def extract_items(searchterm, page=None, aggressive=True):
-    print 'Searching BHL for "{}"...'.format(searchterm)
+    print('Searching BHL for "{}"...'.format(searchterm))
     num_per_page = None
     if page is None:
         page = 1
         num_per_page = 200
     total = 0
     while True:
-        print 'Checking publications on page {}...'.format(page)
+        print('Checking publications on page {}...'.format(page))
         root = get_matching_items(searchterm, page=page)
         publications = root.xpath('/Response/Result/Publication')
         total += len(publications)
@@ -207,7 +211,7 @@ def extract_items(searchterm, page=None, aggressive=True):
             try:
                 lookup[url]
             except KeyError:
-                print 'Processing {}...'.format(url, key)
+                print('Processing {}...'.format(url, key))
                 try:
                     route_request(url, aggressive=aggressive)
                 except Exception as e:
@@ -232,21 +236,21 @@ def save_part(part):
     DB.bulk = False
     # Create a Journal record
     keys = ['journal']
-    rec = {'title': v for k, v in part.iteritems() if k in keys}
+    rec = {'title': v for k, v in part.items() if k in keys}
     if rec:
         DB.safe_add(Journal, **rec)
     # Create a Part record
     keys = ['id', 'source', 'item_id', 'part_id', 'first_page', 'min_page', 'max_page']
-    rec = {k: v for k, v in part.iteritems() if k in keys}
+    rec = {k: v for k, v in part.items() if k in keys}
     DB.safe_add(Part, **rec)
     # Create a Document record
     keys = ['id', 'source', 'title', 'journal', 'year', 'doi']
-    rec = {k: v for k, v in part.iteritems() if k in keys}
+    rec = {k: v for k, v in part.items() if k in keys}
     doc = DB.safe_add(Document, **rec)
-    for page_id, text in part['pages'].iteritems():
+    for page_id, text in part['pages'].items():
         # Create Snippet and Specimen records
         snippets = PARSER.snippets(text, num_chars=100)
-        for match, snips in snippets.iteritems():
+        for match, snips in snippets.items():
             spec_nums = PARSER.parse(match)
             # Get unique snippets
             for snip in snips:
@@ -318,13 +322,13 @@ def map_part(part):
         logging.info('Mapping %s pages to part %s', len(pages), part_id)
         metadata['page_nums'] = pages
         return metadata
-    print etree.tostring(root, pretty_print=True)
+    print(etree.tostring(root, pretty_print=True))
     raise Exception
 
 
 def map_page(page):
     page_id = xmlget(page, 'PageID', int)
-    text = xmlget(page, 'OcrText', default='', coerce=unicode)
+    text = xmlget(page, 'OcrText', default='', coerce=str)
     text = re.sub(' \n+', ' ', text if text else '').strip()
     return {
         'page_id': page_id,
@@ -383,7 +387,7 @@ def db_find(item_id=0, part_id=0, page_id=0):
     assert item_id or part_id or page_id
     item_id, part_id, page_id = [int(i) for i in (item_id, part_id, page_id)]
     kwargs = {'item_id': item_id, 'part_id': part_id, 'page_id': page_id}
-    kwargstr = str({k: v for k, v in kwargs.iteritems() if v})
+    kwargstr = str({k: v for k, v in kwargs.items() if v})
     # Check if this item has any snippets associated with it
     rows = db_snippets(item_id, part_id, page_id)
     specimens = {}
@@ -420,7 +424,7 @@ def db_snippets(item_id=0, part_id=0, page_id=0):
                       Snippet.page_id == 'bhl:page:{}'.format(page_id))
               )
     kwargs = {'item_id': item_id, 'part_id': part_id, 'page_id': page_id}
-    kwargstr = str({k: v for k, v in kwargs.iteritems() if v})
+    kwargstr = str({k: v for k, v in kwargs.items() if v})
     logging.debug('Query for %s: %s', kwargstr, str(query))
     return query.all()
 
@@ -434,7 +438,7 @@ def db_parts(item_id=0, part_id=0, page_id=0):
                            Part.max_page >= page_id))
                )
     kwargs = {'item_id': item_id, 'part_id': part_id, 'page_id': page_id}
-    kwargstr = str({k: v for k, v in kwargs.iteritems() if v})
+    kwargstr = str({k: v for k, v in kwargs.items() if v})
     logging.debug('Query for %s: %s', kwargstr, str(query))
     return query.all()
 
@@ -466,4 +470,4 @@ lookup = populate_url_lookup()
 
 
 if __name__ == '__main__':
-    print lookup['https://www.biodiversitylibrary.org/part/236613']
+    print(lookup['https://www.biodiversitylibrary.org/part/236613'])

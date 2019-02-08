@@ -1,3 +1,8 @@
+from __future__ import absolute_import
+from __future__ import unicode_literals
+from builtins import str
+from builtins import range
+from builtins import object
 import logging
 
 import re
@@ -7,7 +12,7 @@ import requests
 from unidecode import unidecode
 from nltk.corpus import stopwords
 
-from parser import Parser
+from .parser import Parser
 
 
 class Score(object):
@@ -153,7 +158,7 @@ def _get_specimens(catnum=None, **kwargs):
 
 def get_specimens(*args, **kwargs):
     """Returns complete SimpleDarwinCore records from the GeoGallery Portal"""
-    for i in xrange(1, 13):
+    for i in range(1, 13):
         try:
             response = _get_specimens(*args, **kwargs)
         except:
@@ -258,7 +263,7 @@ def get_keywords(text, minlen=5, blacklist=None, endings=None, replacements=None
                         word = word[:-len(ending)]
             # Replacements
             if replacements is not None:
-                for find, repl in replacements.iteritems():
+                for find, repl in replacements.items():
                     word = word.replace(find, repl)
             if len(word) > 2:
                 keywords.append(word)
@@ -282,7 +287,7 @@ def filter_records(records, refnum, keywords=None, dept=None):
     }
     if dept is not None:
         dept = depts.get(dept.rstrip('*'), dept)
-        if dept.rstrip('*') not in depts.values():
+        if dept.rstrip('*') not in list(depts.values()):
             raise ValueError('Bad department: {}'.format(dept))
     parser = Parser()
     try:

@@ -2,7 +2,11 @@
 
 Copy to the main directory to run
 """
+from __future__ import print_function
+from __future__ import unicode_literals
+from __future__ import division
 
+from past.utils import old_div
 import re
 
 from sqlalchemy import distinct
@@ -22,7 +26,7 @@ from database.v20180512.database.queries import Query as SrcQuery
 
 def get_target(snippet):
     snippet = snippet.replace('**', '')
-    i = len(snippet) / 2 - 5
+    i = old_div(len(snippet), 2) - 5
     j = len(snippet)
     pre = snippet[:i]
     target = snippet[i:].replace('**', '')
@@ -61,7 +65,7 @@ while True:
                         .all()
     if not snippets:
         break
-    print 'Checking results {:,} through {:,}...'.format(offset, offset + limit)
+    print('Checking results {:,} through {:,}...'.format(offset, offset + limit))
     for rec in snippets:
         # Check the hints dict to see if snippet has already been processed
         clean = rec.snippet.replace('**', '')
@@ -115,7 +119,7 @@ while True:
                                    spec_num=spec_num)
                 sess_to.add(spec)
     offset += limit
-print len(hints)
+print(len(hints))
 sess_to.commit().close()
 
 # Routine tasks

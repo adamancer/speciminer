@@ -1,7 +1,11 @@
 """Extends and summarizes data mined from GeoDeepDive"""
 
 from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
 
+from builtins import input
 import logging
 import logging.config
 
@@ -14,10 +18,10 @@ from sqlalchemy import and_, or_, not_
 from sqlalchemy.exc import IntegrityError
 from unidecode import unidecode
 
-from miners.link import get_specimens, filter_records, get_keywords
-from miners.topic import Topicker
-from database.database import Document, Journal, Link, Snippet, Specimen, Taxon
-from database.queries import Query
+from .miners.link import get_specimens, filter_records, get_keywords
+from .miners.topic import Topicker
+from .database.database import Document, Journal, Link, Snippet, Specimen, Taxon
+from .database.queries import Query
 
 
 requests_cache.install_cache(os.path.join('..', '..', '..', '..', '..', '..', 'cache', 'topics'))
@@ -34,7 +38,7 @@ def get_taxa_on_pages(pages):
 
 def match_spec_num(spec_num, doc_id, dept=None):
     """Matches specimen to catalog record based on snippets where it occurs"""
-    print 'Matching {}...'.format(spec_num)
+    print('Matching {}...'.format(spec_num))
     match_quality = None
     records = get_specimens(spec_num)
     if dept is not None:
@@ -137,7 +141,7 @@ def link_citation(row, dept=None):
                                                                    row.doc_id,
                                                                    dept=dept)
 
-    print '  {}'.format(match_quality)
+    print('  {}'.format(match_quality))
     # Record matches if any of the quality checks yield a hit
     num_specimens = 0
     if matches:
@@ -169,7 +173,7 @@ def link_citation(row, dept=None):
         docs = {}
         for doc in db.query(Link.doc_id).filter(Link.ezid != None).all():
             docs.setdefault(doc.doc_id, []).append(1)
-        for doc_id, rows in docs.iteritems():
+        for doc_id, rows in docs.items():
             db.update(Document, id=doc_id, num_specimens=len(rows))
         db.commit()
     # Update count for this article
@@ -187,7 +191,7 @@ def clear_bad_links(db):
 
 def clear_existing_links(db):
     """Clears existing links with NMNH specimens"""
-    print 'Clearing existing links...'
+    print('Clearing existing links...')
     where = [
         Links.__table__.c.match_quality != 'Matched manually',
         Links.__table__.c.match_quality != None
@@ -255,7 +259,7 @@ def flag_suspect_suffixes(db):
     pattern = re.compile(r'-([A-Z]{3,}|\])$')
     for row in db.query(Link.id, Link.spec_num).filter(Link.corrected == None):
         if pattern.search(row.spec_num):
-            print 'Fixing {}...'.format(row.spec_num)
+            print('Fixing {}...'.format(row.spec_num))
             spec_num = row.spec_num.rsplit('-', 1)[0]
             try:
                 db.update(Link, id=row.id, spec_num=spec_num)
@@ -268,7 +272,7 @@ def flag_suspect_suffixes(db):
     # there is no onerous uniqueness constraint.
     for row in db.query(Specimen.id, Specimen.spec_num).all():
         if pattern.search(row.spec_num):
-            print 'Fixing {}...'.format(row.spec_num)
+            print('Fixing {}...'.format(row.spec_num))
             spec_num = row.spec_num.rsplit('-', 1)[0]
             db.update(Specimen, id=row.id, spec_num=spec_num)
     db.commit()
@@ -279,7 +283,7 @@ def flag_unlikely_suffixes(db):
              .filter(Link.spec_num.like('%-%'),
                      Link.corrected == None)
     for i, row in enumerate(rows):
-        print 'Fixing {}...'.format(row.spec_num)
+        print('Fixing {}...'.format(row.spec_num))
         if row.department and row.department.startswith('Min'):
             continue
         spec_num = row.spec_num.rsplit('-', 1)[0]
@@ -291,7 +295,7 @@ def flag_unlikely_suffixes(db):
             db.update(Link, id=row.id, corrected='[UNLIKELY_SUFFIX]')
             db.commit()
         if i and not i % 10000:
-            print ' {:,} rows examined'
+            print(' {:,} rows examined')
     db.commit()
 
 
@@ -309,11 +313,11 @@ def flag_truncations(db):
                               s != row.spec_num
                               and s.startswith(row.spec_num))]
             if startswith:
-                print row.spec_num, '=>', startswith
+                print(row.spec_num, '=>', startswith)
                 db.update(Link, id=row.id, corrected='[TRUNCATION]')
                 #db.delete(Links, spec_num=row.spec_num, doc_id=doc_id)
         if i and not i % 10000:
-            print ' {:,} rows examined'
+            print(' {:,} rows examined')
     db.commit()
 
 
@@ -358,22 +362,22 @@ def match_citations(db):
 
 def count_citations(db, reset=False):
     """Counts citations for each paper"""
-    print 'Counting citations for each paper...'
+    print('Counting citations for each paper...')
     if reset:
         for row in db.query(Document).filter(Document.num_specimens > 0).all():
             db.update(Document, id=row.id, num_specimens=None)
     docs = {}
     for row in db.query(Link.doc_id).all():
         docs.setdefault(row.doc_id, []).append(1)
-    for doc_id, rows in docs.iteritems():
-        print ' {} => {:,}'.format(doc_id, len(rows))
+    for doc_id, rows in docs.items():
+        print(' {} => {:,}'.format(doc_id, len(rows)))
         db.update(Document, id=doc_id, num_specimens=len(rows))
     db.commit()
 
 
 def count_snippets(db):
     """Counts the number of snippets in which each specimen is found"""
-    print 'Counting snippets for each specimen number...'
+    print('Counting snippets for each specimen number...')
     snippets = {}
     for row in db.query(Specimen.snippet_id,
                         Specimen.spec_num,
@@ -397,9 +401,9 @@ def guess_department(depts):
         if dept and not dept.endswith('*'):
             counts[dept] = depts.count(dept)
     # Skip if everything already assigned to the same department
-    if len(counts) == 1 and counts.values()[0] == len(depts):
+    if len(counts) == 1 and list(counts.values())[0] == len(depts):
         return
-    for dept, count in counts.iteritems():
+    for dept, count in counts.items():
         if ((count / len(depts) > 0.7 and count > 20)
             or (len(counts) == 1 and count >= 5)):
             return dept
@@ -407,7 +411,7 @@ def guess_department(depts):
 
 def assign_department_from_related(db):
     """Assigns the department based info from a given paper"""
-    print 'Assigning departments...'
+    print('Assigning departments...')
     # Map high-quality citations for each document
     statuses = (
         'Matched snippet',
@@ -423,12 +427,12 @@ def assign_department_from_related(db):
             docs.setdefault(row.doc_id, []).append(None)
         i += 1
         if not i % 25000:
-            print ' {:,} rows examined'.format(i)
-    for doc_id, depts in docs.iteritems():
-        print 'Checking for a consistent department in {}...'.format(doc_id)
+            print(' {:,} rows examined'.format(i))
+    for doc_id, depts in docs.items():
+        print('Checking for a consistent department in {}...'.format(doc_id))
         dept = guess_department(depts)
         if dept is not None:
-            print ' Assigned samples in {} to {}'.format(doc_id, dept)
+            print(' Assigned samples in {} to {}'.format(doc_id, dept))
             # Assigning a department will OVERWRITE matches for samples
             # from other departments for this document. Clear those
             # matches now.
@@ -464,7 +468,7 @@ def assign_department_from_related(db):
 
 
 def assign_department_from_doc(db):
-    print 'Assigning deparment based on source...'
+    print('Assigning deparment based on source...')
     topicker = Topicker()
     # Update departments in links based on documents
     rows = db.query(Document.id, Document.topic) \
@@ -478,9 +482,9 @@ def assign_department_from_doc(db):
                   notes='Assigned dept based on document')
         i += 1
         if i and not i % 1000:
-            print '  {:,}/{:,} documents examined'.format(i, len(rows))
+            print('  {:,}/{:,} documents examined'.format(i, len(rows)))
     else:
-        print '  {:,}/{:,} documents examined!'.format(i, len(rows))
+        print('  {:,}/{:,} documents examined!'.format(i, len(rows)))
     # Update departments in links based on journals
     rows = db.query(Document.id, Journal.title, Journal.topic) \
              .join(Journal, Document.title == Journal.title) \
@@ -495,9 +499,9 @@ def assign_department_from_doc(db):
                   notes='Assigned dept based on journal')
         i += 1
         if i and not i % 1000:
-            print '  {:,}/{:,} journals examined!'.format(i, len(rows))
+            print('  {:,}/{:,} journals examined!'.format(i, len(rows)))
     else:
-        print '  {:,}/{:,} journals examined!'.format(i, len(rows))
+        print('  {:,}/{:,} journals examined!'.format(i, len(rows)))
     # Clear departments for specimens from other institutions
     where = [not_(or_(Link.__table__.c.spec_num.like('NMNH%'),
                       Link.__table__.c.spec_num.like('USNM%')))]
@@ -516,11 +520,11 @@ def assign_doc_topic_from_journal(db):
 def assign_doc_topic_from_links(db):
     # Back-populate topics from links
     topicker = Topicker()
-    dept_to_code = {v: k for k, v in topicker.depts.iteritems()}
+    dept_to_code = {v: k for k, v in topicker.depts.items()}
     doc_ids = {}
     for row in db.query(Link.doc_id, Link.department):
         doc_ids.setdefault(row.doc_id, []).append(row.department)
-    for doc_id, depts in doc_ids.iteritems():
+    for doc_id, depts in doc_ids.items():
         populated = [dept.rstrip('*') for dept in depts if dept]
         if (len(set(populated)) == 1
             and (len(populated) > 5
@@ -553,12 +557,12 @@ def assign_doc_topic_from_title(db):
             #print '    + Assigned to {}'.format(dept)
         else:
             msg = u'No match: "{}"'.format(unidecode(row.title))
-            print msg
+            print(msg)
             logging.debug(msg)
         i += 1
         if not i % 100:
-            print mask.format(i, len(rows), 'documents')
-    print mask.format(i, len(rows), 'documents')
+            print(mask.format(i, len(rows), 'documents'))
+    print(mask.format(i, len(rows), 'documents'))
 
 
 def assign_journal_topic_from_title(db):
@@ -580,12 +584,12 @@ def assign_journal_topic_from_title(db):
             #print '    + Assigned to {}'.format(dept)
         else:
             msg = 'No match: "{}"'.format(unidecode(row.title))
-            print msg
+            print(msg)
             logging.debug(msg)
         i += 1
         if not i % 100:
-            print mask.format(i, len(rows), 'journal')
-    print mask.format(i, len(rows), 'documents')
+            print(mask.format(i, len(rows), 'journal'))
+    print(mask.format(i, len(rows), 'documents'))
     db.commit()
     db.max_length = max_length
 
@@ -600,7 +604,7 @@ def analyze_titles(db):
     for word in sorted(keywords):
         topics = keywords[word]
         if len(topics) > 2 and len(set(topics)) == 1:
-            print word, '=>', topics[0], '(n={})'.format(len(topics))
+            print(word, '=>', topics[0], '(n={})'.format(len(topics)))
             keywords[word] = topics[0]
         else:
             del keywords[word]
@@ -612,11 +616,11 @@ def analyze_titles(db):
 
 if __name__ == '__main__':
     # Configure logging and cache
-    logging.config.dictConfig(yaml.load(open('logging.yml', 'rb')))
+    logging.config.dictConfig(yaml.load(open('logging.yml', 'r')))
     # Set up database query engine
     db = Query(max_length=10000)
     analyze_titles(db)
-    raw_input('paused')
+    input('paused')
     # Preflight
     #clear_existing_links(db)
     clear_bad_links(db)

@@ -1,4 +1,6 @@
 """Defines methods for using the GeoDeepDive API"""
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import time
 
@@ -11,7 +13,7 @@ def get_documents(**kwargs):
     """Returns metadata about a set of GeoDeepDive documents"""
     url = 'https://geodeepdive.org/api/articles'
     response = requests.get(url, params=kwargs)
-    print 'Checking {}...'.format(response.url)
+    print('Checking {}...'.format(response.url))
     if hasattr(response, 'from_cache') and not response.from_cache:
         time.sleep(3)
     if response.status_code == 200:
@@ -29,7 +31,7 @@ def get_journals(**kwargs):
     """Returns metadata about a set of GeoDeepDive documents"""
     url = 'https://geodeepdive.org/api/journals'
     response = requests.get(url, params=kwargs)
-    print 'Checking {}...'.format(response.url)
+    print('Checking {}...'.format(response.url))
     if hasattr(response, 'from_cache') and not response.from_cache:
         time.sleep(1)
     if response.status_code == 200:

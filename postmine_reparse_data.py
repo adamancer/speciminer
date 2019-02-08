@@ -1,4 +1,7 @@
 """Re-parses snippets collected from the GeoDeepDive corpus"""
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
 
 import logging
 import logging.config
@@ -10,9 +13,9 @@ from unidecode import unidecode
 from sqlalchemy import distinct, func
 from sqlalchemy.exc import IntegrityError
 
-from miners.parser import Parser
-from database.database import Document, Journal, Link, Snippet, Specimen
-from database.queries import Query
+from .miners.parser import Parser
+from .database.database import Document, Journal, Link, Snippet, Specimen
+from .database.queries import Query
 
 
 def get_target(snippet):
@@ -26,20 +29,20 @@ def get_target(snippet):
 
 
 if __name__ == '__main__':
-    logging.config.dictConfig(yaml.load(open('logging.yml', 'rb')))
+    logging.config.dictConfig(yaml.load(open('logging.yml', 'r')))
     db = Query(max_length=5000, bulk=True)
     db.new()
-    print 'Parsing catalog numbers from snippets...'
+    print('Parsing catalog numbers from snippets...')
     parser = Parser()
 
-    print 'Deleting existing catalog numbers...'
+    print('Deleting existing catalog numbers...')
     db.query(Link).delete()
     db.query(Specimen).delete()
     db.commit()
 
     # Identify sneaky duplicates in the snippets table. These are typically
     # snippets that occur twice with different specimen numbers highlighted.
-    print 'Clearing duplicate snippets...'
+    print('Clearing duplicate snippets...')
     snippets = {}
     for row in db.query(Snippet).all():
         pre, target, post = get_target(row.snippet)
@@ -47,16 +50,16 @@ if __name__ == '__main__':
         page_id = row.page_id if row.page_id else ''
         key = '|'.join([row.doc_id, page_id, text])
         snippets.setdefault(key, []).append(row)
-    for snippet, rows in snippets.iteritems():
+    for snippet, rows in snippets.items():
         if len(rows) > 1:
             for row in rows[1:]:
-                print 'Deleted {}'.format(row.id)
+                print('Deleted {}'.format(row.id))
                 db.delete(Snippet, id=row.id)
     db.commit()
 
     # Re-parse all snippets, extracting catalog numbers and re-highlighting
     # the snippets
-    print 'Parsing snippets...'
+    print('Parsing snippets...')
     for row in db.query(Snippet).all():
         # Update snippet
         pre, target, post = get_target(row.snippet)
@@ -77,7 +80,7 @@ if __name__ == '__main__':
                            spec_num=spec_num)
     db.commit()
 
-    print 'Creating table of linkable specimens...'
+    print('Creating table of linkable specimens...')
     # Populate the hints dict from existing
     hints = {}
     query = db.query(Link.spec_num, Link.doc_id)
@@ -96,4 +99,4 @@ if __name__ == '__main__':
                 db.add(Link, spec_num=row.spec_num, doc_id=row.id)
 
     db.commit().close()
-    print 'Done!'
+    print('Done!')

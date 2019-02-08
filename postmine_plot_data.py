@@ -1,7 +1,15 @@
 """Plots citations and publications featuring NMNH specimens"""
 
 from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
 
+from builtins import next
+from builtins import zip
+from builtins import str
+from builtins import range
+from past.builtins import basestring
 import csv
 import glob
 import os
@@ -14,8 +22,8 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 from sqlalchemy import and_, or_
 
-from database.database import Document, Link, Journal
-from database.queries import Query
+from .database.database import Document, Link, Journal
+from .database.queries import Query
 
 
 DB = Query()
@@ -73,7 +81,7 @@ def parse_dept(dept, include=None):
         return
     else:
         dept = DEPTMAP.get(dept, dept)
-        if dept not in DEPTMAP.keys() + DEPTMAP.values():
+        if dept not in list(DEPTMAP.keys()) + list(DEPTMAP.values()):
             return
         if include and dept not in include:
             return
@@ -87,7 +95,7 @@ def get_years(years):
         pass
     min_yr = min(years) if not MIN_YEAR else MIN_YEAR
     max_yr = max(years) if not MAX_YEAR else MAX_YEAR
-    return [y for y in xrange(min_yr, max_yr + 1) if min_yr <= y <= max_yr]
+    return [y for y in range(min_yr, max_yr + 1) if min_yr <= y <= max_yr]
 
 
 def round_down(val, base=5):
@@ -108,8 +116,8 @@ def tabulate_citations(fn='citations.md', include=None):
     citations = {}
     # Find citations
     obj_matches = get_object_matches(include=include)
-    for dept, years in obj_matches.iteritems():
-        for _, doc_ids in years.iteritems():
+    for dept, years in obj_matches.items():
+        for _, doc_ids in years.items():
             for doc_id in doc_ids:
                 try:
                     citations[dept]['matched_object'] += 1
@@ -122,8 +130,8 @@ def tabulate_citations(fn='citations.md', include=None):
                         'pubs_on_topic': []
                     }
     dept_matches = get_dept_matches(include=include)
-    for dept, years in dept_matches.iteritems():
-        for _, doc_ids in years.iteritems():
+    for dept, years in dept_matches.items():
+        for _, doc_ids in years.items():
             for doc_id in doc_ids:
                 try:
                     citations[dept]['matched_dept'] += 1
@@ -154,7 +162,7 @@ def tabulate_citations(fn='citations.md', include=None):
                     'pubs_on_topic': [row.id]
                 }
     rows = []
-    for dept, stats in citations.iteritems():
+    for dept, stats in citations.items():
         rows.append([dept,
                      stats['matched_object'],
                      stats['matched_dept'],
@@ -186,7 +194,7 @@ def _tabulate(fp, rows, colnames=None, sortindex=0):
     if colnames:
         rows.insert(1, border)
     # Write table to file
-    with open(fp, 'wb') as f:
+    with open(fp, 'w') as f:
         for row in rows:
             # Left-justify text and right-justify numbers
             row = [val.ljust(cols[i]) if isinstance(val, basestring)
@@ -280,7 +288,7 @@ def get_topics(include=None):
     depts = [parse_dept(r.topic, include=include)
              for r in DB.query(Document.topic).distinct().all()]
     depts = sorted(list(set([dept for dept in depts if dept])))
-    lookup = {v: k for k, v in DEPTMAP.iteritems()}
+    lookup = {v: k for k, v in DEPTMAP.items()}
     for dept in depts:
         if include is not None and dept not in include:
             continue
@@ -325,7 +333,7 @@ def plot_citations(include=None, exact=True, normalize=False):
         data.update(unassigned)
     years = []
     for dept in data:
-        for year, citations in data.get(dept, {}).iteritems():
+        for year, citations in data.get(dept, {}).items():
             data[dept][year] = len(citations)
             years.append(int(year))
     if normalize:
@@ -346,7 +354,7 @@ def plot_papers(include=None, exact=True, normalize=False):
         data.update(unassigned)
     years = []
     for dept in data:
-        for year, citations in data.get(dept, {}).iteritems():
+        for year, citations in data.get(dept, {}).items():
             data[dept][year] = len(set(citations))
             years.append(int(year))
     if normalize:
@@ -361,7 +369,7 @@ def plot_topics(include=None, normalize=False):
     data = get_topics(include)
     years = []
     for dept in data:
-        for year, documents in data.get(dept, {}).iteritems():
+        for year, documents in data.get(dept, {}).items():
             data[dept][year] = len(set(documents))
             years.append(int(year))
     if normalize:
@@ -374,10 +382,10 @@ def plot_topics(include=None, normalize=False):
 
 def plot_one_sample(catnum, like=None, dept=None):
     data = get_sample(like if like is not None else catnum, dept=dept)
-    include = data.keys()
+    include = list(data.keys())
     years = []
     for dept in data:
-        for year, documents in data.get(dept, {}).iteritems():
+        for year, documents in data.get(dept, {}).items():
             data[dept][year] = len(set(documents))
             years.append(int(year))
     title = set_title('Citations of {}'.format(catnum), years)
@@ -393,7 +401,7 @@ def plot_all_papers(normalize=False):
               .filter(Document.id.like('bhl%'))
     for row in query.all():
         data.setdefault('All', {}).setdefault(parse_year(row.year), []).append(row.id)
-    for year, documents in data['All'].iteritems():
+    for year, documents in data['All'].items():
         data['All'][year] = len(set(documents))
         years.append(int(year))
     if normalize:
@@ -431,8 +439,8 @@ def plot_pubs_per_loan(include=None):
     # Normalize data for scatter plot
     normalized = {}
     years = []
-    for dept, data in objects.iteritems():
-        for year, docs in data.iteritems():
+    for dept, data in objects.items():
+        for year, docs in data.items():
             if year <= 1997:
                 count = len(set(docs))
                 try:
@@ -525,16 +533,16 @@ def _normalize(data, include=None):
     corpii = read_corpii(os.path.join('output', 'combined.csv'))
     # Combine data from the two corpii
     combined = {}
-    for key, corpus in corpii[0].iteritems():
-        for year, count in corpus.iteritems():
+    for key, corpus in corpii[0].items():
+        for year, count in corpus.items():
             try:
                 combined[year] += count
             except KeyError:
                 combined[year] = count
     normalized = {}
     years = []
-    for key, stats in data.iteritems():
-        for year, count in stats.iteritems():
+    for key, stats in data.items():
+        for year, count in stats.items():
             if MIN_YEAR <= year <= MAX_YEAR:
                 normalized.setdefault(key, {})[year] = count / combined[year]
                 years.append(int(year))
@@ -578,9 +586,9 @@ def _scatter(data, years, include=None, **metadata):
         for x, y in zip(years, row):
             if y:
                 points.append(ax.plot(x, y, 'o', color=color))
-    for key, val in metadata.iteritems():
+    for key, val in metadata.items():
         getattr(ax, 'set_' + key)(val)
-    ax.set_xticks(xrange(round_down(min(years) - 5, 10),
+    ax.set_xticks(range(round_down(min(years) - 5, 10),
                          round_up(max(years), 10) + 5, 10))
     # Only include legend if more than one series is being plotted
     legend = []
@@ -636,10 +644,10 @@ def _bar(data, years, include=None, refdata=None, **metadata):
         else:
             bars.append(ax.bar(years, row, width))
             bottom = row
-    for key, val in metadata.iteritems():
+    for key, val in metadata.items():
         getattr(ax, 'set_' + key)(val)
     ax.set_yticks([0, 100, 200, 300, 400, 500, 600])
-    ax.set_xticks(xrange(round_down(min(years) - 5, 10),
+    ax.set_xticks(range(round_down(min(years) - 5, 10),
                          round_up(max(years), 10) + 5, 10))
     # Only include legend if more than one series is being plotted
     if len(bars) > 1:
@@ -694,8 +702,8 @@ if __name__ == '__main__':
     for fp in glob.iglob('plots/*'):
         shutil.move(fp, output_dir)
     # Plot by department
-    for include in [None] + DEPTMAP.values():
-        print 'Plotting {}...'.format(include)
+    for include in [None] + list(DEPTMAP.values()):
+        print('Plotting {}...'.format(include))
         if include is not None:
             include = [include]
         tabulate_citations()

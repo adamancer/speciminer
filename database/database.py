@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 import os
 
 import yaml
@@ -140,7 +141,7 @@ def get_path(relpath, delim='/'):
 
 
 
-params = yaml.load(open(get_path('config.yml'), 'rb'))
+params = yaml.load(open(get_path('config.yml'), 'r'))
 if params['use'] == 'sqlite':
     path = get_path(params['sqlite']['path'])
     try:

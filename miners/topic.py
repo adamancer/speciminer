@@ -1,5 +1,9 @@
 from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
 
+from builtins import object
 import logging
 
 import sys
@@ -17,7 +21,7 @@ from lxml import etree
 from unidecode import unidecode
 
 try:
-    from rerequests import ReRequest
+    from .rerequests import ReRequest
     requests = ReRequest()
 except ImportError:
     import requests
@@ -53,7 +57,7 @@ class Topicker(object):
 
     def __init__(self):
         try:
-            with open('hints.json', 'rb') as f:
+            with open('hints.json', 'r') as f:
                 self.hints = json.load(f)
         except IOError:
             self.hints = {}
@@ -65,7 +69,7 @@ class Topicker(object):
         keywords = {}
         for fp in glob.iglob(os.path.join(script_dir, 'files', '*.txt')):
             dept = os.path.basename(fp)[:-4]
-            with open(fp, 'rb') as f:
+            with open(fp, 'r') as f:
                 patterns = [p.strip() for p in f.readlines() if p.strip()]
                 keywords[dept] = patterns
         ordered = OrderedDict()
@@ -126,7 +130,7 @@ class Topicker(object):
                         import pprint as pp
                         #pp.pprint(row)
                         vernaculars = row.get('vernaculars', [])
-                        print vernaculars
+                        print(vernaculars)
             sci_names = self.clean_names([n['scientificName'] for n in names])
         logging.debug(u'Found {} names: {}'.format(len(sci_names), ', '.join(sci_names)))
         return sci_names
@@ -210,7 +214,7 @@ class Topicker(object):
 
     def match_dept_keywords(self, text, i=None, j=None):
         words = [w for w in re.split(ur'\W', text.lower())]
-        for dept in self.keywords.keys()[i:j]:
+        for dept in list(self.keywords.keys())[i:j]:
             for pattern in self.keywords[dept]:
                 for word in words:
                     if re.match('^' + pattern + '$', word, flags=re.I):
@@ -237,7 +241,7 @@ class Topicker(object):
                 if name == taxon.get(key, '').lower():
                     logging.debug(u'Scored match at {0:.1f} points'.format(1))
                     return 1
-        taxon = [s.lower() for s in taxon.values()]
+        taxon = [s.lower() for s in list(taxon.values())]
         logging.debug(u'Names: {}'.format('; '.join(names)))
         logging.debug(u'Taxon: {}'.format('; '.join(taxon)))
         score = 0
@@ -254,12 +258,12 @@ class Topicker(object):
     @staticmethod
     def guess_department(depts):
         counts = {}
-        for dept, score in depts.items():
+        for dept, score in list(depts.items()):
             try:
                 counts[dept] += score
             except KeyError:
                 counts[dept] = score
-        return [dept for dept, count in counts.iteritems()
+        return [dept for dept, count in counts.items()
                 if count == max(counts.values())][0]
 
 
@@ -275,7 +279,7 @@ class Topicker(object):
         for mapping in self.mappings:
             if mapping.value.lower() in words:
                 return mapping.dept
-        for key, dept in self.hints.items():
+        for key, dept in list(self.hints.items()):
             if key.lower() in [s.lower() for s in words]:
                 logging.debug(u'Matched {}={} in hints'.format(key, dept))
                 return dept
@@ -339,7 +343,7 @@ class Topicker(object):
         for mapping in self.mappings:
             if mapping.value.lower() in words:
                 return mapping.dept
-        for key, dept in self.hints.items():
+        for key, dept in list(self.hints.items()):
             if key.lower() in [s.lower() for s in words]:
                 logging.debug(u'Matched {}={} in hints'.format(key, dept))
                 return dept
@@ -363,7 +367,7 @@ class Topicker(object):
             else:
                 if name not in ['arthropoda', 'chordata']:
                     self.hints[name] = dept
-                    with open('hints.json', 'wb') as f:
+                    with open('hints.json', 'w') as f:
                         json.dump(self.hints, f, indent=4, sort_keys=True)
                     msg = 'Added {}={} to hints'.format(name, dept)
                     logging.debug(msg)
@@ -376,6 +380,6 @@ if __name__ == '__main__':
     import requests_cache
     requests_cache.install_cache()
     title = u'New species and distribution of the genus Marilia Muller (Trichoptera: Odontoceridae) in Mexico and Central America'
-    print 'Analyzing "{}"...'.format(title)
+    print('Analyzing "{}"...'.format(title))
     topicker = Topicker()
-    print topicker.get_department2(title)
+    print(topicker.get_department2(title))

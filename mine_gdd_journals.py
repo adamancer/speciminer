@@ -1,4 +1,7 @@
 """Defines methods for working with the GeoDeepDive service"""
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
 
 import logging
 logger = logging.getLogger(__name__)
@@ -14,9 +17,9 @@ import requests_cache
 import yaml
 from unidecode import unidecode
 
-from miners.gdd.api import get_documents, get_journals
-from database.database import DocCount
-from database.queries import Query
+from .miners.gdd.api import get_documents, get_journals
+from .database.database import DocCount
+from .database.queries import Query
 
 
 def std(val):
@@ -54,12 +57,12 @@ if __name__ == '__main__':
         pub  = stats['publishers'].setdefault(journal['publisher'], {})
         # Get lists of titles by year
         name = journal['journal']
-        print 'Finding all articles from {} (n={:,})...'.format(unidecode(name), journal['articles'])
+        print('Finding all articles from {} (n={:,})...'.format(unidecode(name), journal['articles']))
         kwargs = {'pubname': name}
         if journal['articles'] <= 10000:
             kwargs['max'] = journal['articles']
         documents = get_documents(**kwargs)
-        print 'Counting...'
+        print('Counting...')
         for doc in documents:
             key = std(doc['title'])
             year = doc.get('year', None)
@@ -71,7 +74,7 @@ if __name__ == '__main__':
     db = Query(1000)
     db.delete(DocCount)
     for key in stats:
-        for name, years in stats[key].items():
+        for name, years in list(stats[key].items()):
             for year in years:
                 db.upsert(DocCount,
                           name=name,

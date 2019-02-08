@@ -1,5 +1,8 @@
 """Defines functions to cluster and expand catalog numbers found by regex"""
+from __future__ import unicode_literals
 
+from builtins import str
+from builtins import object
 import logging
 import os
 import re
@@ -15,7 +18,7 @@ def epen(fn, *args, **kwargs):
 class Cluster(object):
 
     def __init__(self):
-        self.regex = yaml.load(epen(os.path.abspath('regex.yml'), 'rb'))
+        self.regex = yaml.load(epen(os.path.abspath('regex.yml'), 'r'))
         self.regex['catnum'] = self.regex['catnum'].format(**self.regex)
         self.mask = re.compile(self.regex['mask'].format(**self.regex))
         self.simple = re.compile(self.regex['simple'])
@@ -313,7 +316,7 @@ class Cluster(object):
             and self.suf_range.search(val) is None):
             logging.debug('Aborted: Value may be a range')
             return val
-        parts = [unicode(s) for s in re.split(r'([A-z]*\d+)', val) if s]
+        parts = [str(s) for s in re.split(r'([A-z]*\d+)', val) if s]
         logging.debug('Parts: {}'.format(parts))
         if parts:
             parts = self.combine(self.clean(parts), minlen=minlen,

@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 import logging
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def finder():
         else:
             specimens = {}
             snippets = PARSER.snippets(text, num_chars=100)
-            for match, snips in snippets.iteritems():
+            for match, snips in snippets.items():
                 for spec_num in PARSER.parse(match):
                     specimens.setdefault(spec_num, []).extend(snips)
             docinfo = None
@@ -118,7 +119,7 @@ def document(doc_id):
             if (spec_nums[spec_num]['match_quality'] == 'No match'
                 or not spec_nums[spec_num]['match_quality']):
                     spec_nums[spec_num]['match_quality'] = row.match_quality
-    spec_nums = spec_nums.values()
+    spec_nums = list(spec_nums.values())
     # Find related snippets
     query = db.query(Snippet.snippet, Specimen.spec_num) \
               .join(Specimen, Specimen.snippet_id == Snippet.id) \

@@ -1,5 +1,10 @@
 """Defines methods to interact with the database of citations"""
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
 
+from builtins import str
+from builtins import object
 import logging
 
 import datetime as dt
@@ -13,7 +18,7 @@ from sqlalchemy import and_, update
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.inspection import inspect
 
-from database import engine, Session, Document, Journal, Snippet, Specimen
+from .database import engine, Session, Document, Journal, Snippet, Specimen
 
 
 class _Query(object):
@@ -42,7 +47,7 @@ class _Query(object):
     @staticmethod
     def row2dict(row):
         """Converts a row to a dict"""
-        return {k: v for k, v in vars(row).iteritems() if not k.startswith('_')}
+        return {k: v for k, v in vars(row).items() if not k.startswith('_')}
 
 
     def get_unique(self, table, primary_only=False):
@@ -151,7 +156,7 @@ class _Query(object):
         session.commit()
         if isinstance(where, dict):
             eq = self.keys_to_cols(table, **where)
-            where = [k == v for k, v in eq.iteritems()]
+            where = [k == v for k, v in eq.items()]
         if len(where) > 1:
             where = and_(*where)
         else:
@@ -199,27 +204,27 @@ class _Query(object):
         if self.session is not None and self.length:
             # Save bulk transactions
             if self._objects:
-                for key, vals in self._objects.iteritems():
-                    vals = vals.values()
+                for key, vals in self._objects.items():
+                    vals = list(vals.values())
                     logging.debug('Saving {:,} records in {}'.format(len(vals), key))
                     self.session.bulk_save_objects(self._mappers[key], vals)
                 self._objects = {}
             if self._insert_mappings:
-                for key, vals in self._insert_mappings.iteritems():
-                    vals = vals.values()
+                for key, vals in self._insert_mappings.items():
+                    vals = list(vals.values())
                     logging.debug('Inserting {:,} records into {}'.format(len(vals), key))
                     self.session.bulk_insert_mappings(self._mappers[key], vals)
                 self._insert_mappings = {}
             if self._update_mappings:
-                for key, vals in self._update_mappings.iteritems():
-                    vals = vals.values()
+                for key, vals in self._update_mappings.items():
+                    vals = list(vals.values())
                     logging.debug('Updating {:,} records in {}'.format(len(vals), key))
                     self.session.bulk_update_mappings(self._mappers[key], vals)
                 self._update_mappings = {}
             self.session.commit()
             # Notify user of size and time of commit
             now = dt.datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-            print 'Committed changes (n={}, {})'.format(self.length, now)
+            print('Committed changes (n={}, {})'.format(self.length, now))
             self.length = 0
         return self
 
@@ -242,7 +247,7 @@ class Query(_Query):
 
     def read_bibjson(self, fp):
         """Reads bibliography data the bibjson file provided by GeoDeepDive"""
-        for bib in json.load(open(fp, 'rb')):
+        for bib in json.load(open(fp, 'r')):
             doi = [b['id'] for b in bib.get('identifier', []) if b['type'] == 'doi']
             kwargs = {
                 'id': bib['_gddid'],
@@ -274,4 +279,4 @@ class Query(_Query):
 
 if __name__ == '__main__':
     #Query().read_bibjson(os.path.join('output', 'bibjson'))
-    print Query().get_topics(37328)
+    print(Query().get_topics(37328))
