@@ -101,6 +101,37 @@ class Topicker(object):
         return sci_names
 
 
+    def resolve_names(self, names, **kwargs):
+        """Resolve taxonomic names"""
+        logging.debug(u'Resolving taxonomic names "{}"'.format(names))
+        url = 'http://resolver.globalnames.org/name_resolvers.json'
+        headers = {'UserAgent': 'MinSciBot/0.1 (mansura@si.edu)'}
+        params = {
+            'names': unidecode('|'.join(names)),
+            'with_context': True,
+            'with_vernaculars': True
+        }
+        params.update(**kwargs)
+        response = requests.get(url, headers=headers, params=params)
+        if not '.local' in url and hasattr(response, 'from_cache') and not response.from_cache:
+            logging.debug(u'Retrieved {} from server'.format(response.request.url))
+            time.sleep(5)
+        else:
+            logging.debug(u'Retrieved {} from cache'.format(response.request.url))
+        sci_names = []
+        if response.status_code == 200:
+            for results in response.json().get('data', []):
+                if results['is_known_name']:
+                    for row in results['results']:
+                        import pprint as pp
+                        #pp.pprint(row)
+                        vernaculars = row.get('vernaculars', [])
+                        print vernaculars
+            sci_names = self.clean_names([n['scientificName'] for n in names])
+        logging.debug(u'Found {} names: {}'.format(len(sci_names), ', '.join(sci_names)))
+        return sci_names
+
+
     def get_tsns(self, name, **kwargs):
         """Returns specimen metadata from the Smithsonian"""
         logging.debug(u'Seeking TSNs for "{}"'.format(name))
