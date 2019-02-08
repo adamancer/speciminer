@@ -361,9 +361,9 @@ def count_citations(db, reset=False):
     print 'Counting citations for each paper...'
     if reset:
         for row in db.query(Document).filter(Document.num_specimens > 0).all():
-            db.update(Document, id=row.id, num_specimens=0)
+            db.update(Document, id=row.id, num_specimens=None)
     docs = {}
-    for row in db.query(Link.doc_id).filter(Link.ezid != None).all():
+    for row in db.query(Link.doc_id).all():
         docs.setdefault(row.doc_id, []).append(1)
     for doc_id, rows in docs.iteritems():
         print ' {} => {:,}'.format(doc_id, len(rows))
