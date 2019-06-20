@@ -10,26 +10,37 @@ from builtins import zip
 from builtins import str
 from builtins import range
 from past.builtins import basestring
+
 import csv
 import glob
+import logging
 import os
 import pprint as pp
 import re
 import shutil
+import sys
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from cycler import cycler
 from sqlalchemy import and_, or_
 
-from .database.database import Document, Link, Journal
-from .database.queries import Query
+sys.path.insert(0, '..')
+from config.constants import OUTPUT_DIR
+from database.database import Document, Link, Journal
+from database.queries import Query
+
+
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Running postmine_plot_data.py')
 
 
 DB = Query()
 QUALITY_LIKE = 'Match%'
-MIN_YEAR = 1945
-MAX_YEAR = 2017
+MIN_YEAR = None
+MAX_YEAR = None
 DEPTS = None
 
 DEPTMAP = {
@@ -99,10 +110,12 @@ def get_years(years):
 
 
 def round_down(val, base=5):
+    """Rounds value down to nearest base"""
     return int(base * round(float(val) / base))
 
 
 def round_up(val, base=5):
+    """Rounds value up to nearest base"""
     return int(base * round(float(val) / base))
 
 
@@ -412,7 +425,7 @@ def plot_all_papers(normalize=False):
 
 
 def plot_corpii(include=None, refdata=None):
-    data, years = read_corpii(os.path.join('output', 'combined.csv'), include=include)
+    data, years = read_corpii(os.path.join(OUTPUT_DIR, 'combined.csv'), include=include)
     years = get_years(years)
     name = ' and '.join(include)
     rng = '{}-{}'.format(min(years), max(years))
@@ -424,7 +437,7 @@ def plot_corpii(include=None, refdata=None):
 
 
 def plot_loans(include=None):
-    data, years = read_loans(os.path.join('output', 'combined.csv'), include=include)
+    data, years = read_loans(os.path.join(OUTPUT_DIR, 'combined.csv'), include=include)
     years = get_years(years)
     title = set_title('NMNH outgoing loans', years, include=include)
     return _bar(data,
@@ -435,7 +448,7 @@ def plot_loans(include=None):
 
 def plot_pubs_per_loan(include=None):
     objects = get_dept_matches(include=include)
-    loans = read_loans(os.path.join('output', 'combined.csv'), include=include)
+    loans = read_loans(os.path.join(OUTPUT_DIR, 'combined.csv'), include=include)
     # Normalize data for scatter plot
     normalized = {}
     years = []
@@ -530,7 +543,7 @@ def find_examples():
 
 
 def _normalize(data, include=None):
-    corpii = read_corpii(os.path.join('output', 'combined.csv'))
+    corpii = read_corpii(os.path.join(OUTPUT_DIR, 'combined.csv'))
     # Combine data from the two corpii
     combined = {}
     for key, corpus in corpii[0].items():
@@ -646,9 +659,9 @@ def _bar(data, years, include=None, refdata=None, **metadata):
             bottom = row
     for key, val in metadata.items():
         getattr(ax, 'set_' + key)(val)
-    ax.set_yticks([0, 100, 200, 300, 400, 500, 600])
-    ax.set_xticks(range(round_down(min(years) - 5, 10),
-                         round_up(max(years), 10) + 5, 10))
+    #ax.set_yticks([0, 100, 200, 300, 400, 500, 600])
+    #ax.set_xticks(range(round_down(min(years) - 5, 10),
+    #                     round_up(max(years), 10) + 5, 10))
     # Only include legend if more than one series is being plotted
     if len(bars) > 1:
         #for label, bar in zip(labels, bars[::-1]):

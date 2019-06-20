@@ -6,11 +6,11 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 
 from builtins import input
-import logging
-import logging.config
 
+import logging
 import os
 import re
+import sys
 
 import requests_cache
 import yaml
@@ -18,22 +18,29 @@ from sqlalchemy import and_, or_, not_
 from sqlalchemy.exc import IntegrityError
 from unidecode import unidecode
 
-from .miners.link import get_specimens, filter_records, get_keywords
-from .miners.topic import Topicker
-from .database.database import Document, Journal, Link, Snippet, Specimen, Taxon
-from .database.queries import Query
+sys.path.insert(0, '..')
+from config.constants import CACHE_DIR
+from miners.gdd.api import get_document
+from miners.link import get_specimens, filter_records, get_keywords
+from miners.topic import Topicker
+from database.database import Document, Journal, Link, Snippet, Specimen, Taxon
+from database.queries import Query
 
 
-requests_cache.install_cache(os.path.join('..', '..', '..', '..', '..', '..', 'cache', 'topics'))
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Running postmine_extend_data.py')
+
+
 
 
 def get_taxa_on_pages(pages):
-    """Get taxa on page in BHL"""
+    """Get a list of taxa from a page in BHL"""
     taxa = []
     for row in db.query(Taxon).filter(Taxon.source_id.in_(set(pages))):
         taxa.append(row.taxon)
     return taxa
-
 
 
 def match_spec_num(spec_num, doc_id, dept=None):
@@ -279,6 +286,7 @@ def flag_suspect_suffixes(db):
 
 
 def flag_unlikely_suffixes(db):
+    """Identifies incorrectly parsed suffixes"""
     rows = db.query(Link) \
              .filter(Link.spec_num.like('%-%'),
                      Link.corrected == None)
@@ -336,7 +344,6 @@ def match_citations(db):
               .all()
     for i, row in enumerate(rows):
         print ('Matching row... ({:,}/{:,})'.format(i + 1, len(rows)))
-        # NOTE: Moved this functionality to postflight
         # Check if this is a new document. If so, check if the previous
         # document can be assigned to one department and re-identify rows that
         # missed completely or that matched a different department. For
@@ -531,7 +538,7 @@ def assign_doc_topic_from_links(db):
                  or len(populated) > 1 and len(populated) == len(depts))):
             dept = populated[0]
             code = dept_to_code.get(dept, dept).rstrip('*')
-            logging.debug('Setting topic on {}={}'.format(doc_id, code))
+            logger.debug('Setting topic on {}={}'.format(doc_id, code))
             db.update(Document, id=doc_id, topic=code + '*')
     db.commit()
 
@@ -558,7 +565,7 @@ def assign_doc_topic_from_title(db):
         else:
             msg = u'No match: "{}"'.format(unidecode(row.title))
             print(msg)
-            logging.debug(msg)
+            logger.debug(msg)
         i += 1
         if not i % 100:
             print(mask.format(i, len(rows), 'documents'))
@@ -585,7 +592,7 @@ def assign_journal_topic_from_title(db):
         else:
             msg = 'No match: "{}"'.format(unidecode(row.title))
             print(msg)
-            logging.debug(msg)
+            logger.debug(msg)
         i += 1
         if not i % 100:
             print(mask.format(i, len(rows), 'journal'))
@@ -611,16 +618,61 @@ def analyze_titles(db):
     return keywords
 
 
+def extract_taxa(db):
+    """Extracts taxa from snippets to help classify papers"""
+    query = db.query(Snippet.snippet, Snippet.doc_id).order_by(Snippet.doc_id)
+    docs = {}
+    for row in query.all():
+        docs.setdefault(row.doc_id, []).append(row.snippet)
+    topicker = Topicker()
+    for key, val in docs.items():
+        if key.startswith('gdd'):
+            names = sorted(list(set(topicker.get_names(''.join(val)))))
+            print(names)
+    db.commit()
+
+
+def fill_documents(db):
+    """Populates title, etc. for GDD documents"""
+    query = db.query(Document.id) \
+              .filter(Document.source == 'GDD') \
+              .filter(Document.title == None) \
+              .order_by(Document.id)
+    docs = {}
+    for row in query.all():
+        doc = get_document(doc_id=row.id[4:])
+        doi = None
+        for identifier in doc.get('identifier', []):
+            if identifier['type'] == 'doi':
+                doi = identifier['id']
+        # Confirm that a journal with this name exists
+        db.safe_add(Journal, title=doc['journal'])
+        db.upsert(Document,
+                  id=row.id,
+                  doi=doi,
+                  title=doc['title'],
+                  journal=doc['journal'],
+                  year=doc['year'])
+    db.commit()
+
+
 
 
 
 if __name__ == '__main__':
-    # Configure logging and cache
-    logging.config.dictConfig(yaml.load(open('logging.yml', 'r')))
     # Set up database query engine
-    db = Query(max_length=10000)
-    analyze_titles(db)
+    db = Query(max_length=10)
+    # Fill documents from GDD
+    requests_cache.install_cache(os.path.join(CACHE_DIR, 'gdd'))
+    fill_documents(db)
+    requests_cache.uninstall_cache()
     input('paused')
+    # Assign topics based primary on taxonomic info
+    requests_cache.install_cache(os.path.join(CACHE_DIR, 'topics'))
+    analyze_titles(db)
+    extract_taxa(db)
+    requests_cache.uninstall_cache()
+
     # Preflight
     #clear_existing_links(db)
     clear_bad_links(db)
@@ -634,23 +686,43 @@ if __name__ == '__main__':
     # Assign topics
     if True:
         count_citations(db, reset=True)
-        db.update(Document, where=[Document.__table__.c.topic.like('%*')], topic=None)
-        db.update(Journal, where=[Journal.__table__.c.topic.like('%*')], topic=None)
+        db.update(Document,
+                  where=[Document.__table__.c.topic.like('%*')],
+                  topic=None)
+        db.update(Journal,
+                  where=[Journal.__table__.c.topic.like('%*')],
+                  topic=None)
+        requests_cache.install_cache(os.path.join(CACHE_DIR, 'topics'))
+
+        # Assign topics based primary on taxonomic info
         #assign_doc_topic_from_links(db)
         assign_doc_topic_from_title(db)
         assign_journal_topic_from_title(db)
         assign_department_from_related(db)
         assign_department_from_doc(db)
+        requests_cache.uninstall_cache()
         #raw_input('paused')
     #count_citations(db, True)
     #count_snippets(db)
-    # Main event`
+
+    # Link specimens to catalog records
+    requests_cache.install_cache(os.path.join(CACHE_DIR, 'portal'))
     match_citations(db)
+    requests_cache.uninstall_cache()
+
+    # Assign topics based primary on taxonomic info
+    requests_cache.install_cache(os.path.join(CACHE_DIR, 'topics'))
     #assign_doc_topic_from_links(db)
     #assign_department_from_related(db)
     #assign_department_from_doc(db)
+    requests_cache.uninstall_cache()
     #clear_failed_links(db)
+
+    # Link specimens to catalog records
+    requests_cache.install_cache(os.path.join(CACHE_DIR, 'portal'))
     #match_citations(db)
+    requests_cache.uninstall_cache()
+
     # Postflight
     count_citations(db, True)
     count_snippets(db)

@@ -3,23 +3,32 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import logging
-logger = logging.getLogger(__name__)
-
 import csv
 import glob
+import logging
 import os
 import pprint as pp
 import re
+import sys
 import time
 
 import requests_cache
 import yaml
 from unidecode import unidecode
 
-from .miners.gdd.api import get_documents, get_journals
-from .database.database import DocCount
-from .database.queries import Query
+sys.path.insert(0, '..')
+from config.constants import CACHE_DIR
+from miners.gdd.api import get_documents, get_journals
+from database.database import DocCount
+from database.queries import Query
+
+
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Running mine_gdd_journals.py')
+
+
 
 
 def std(val):
@@ -27,16 +36,8 @@ def std(val):
 
 
 if __name__ == '__main__':
-    try:
-        requests_cache.install_cache(os.path.join('output', 'journals'))
-    except KeyError:
-        pass
-    # Ensure the input directory exists (output is created in the
-    # database file)
-    try:
-        os.makedirs('input')
-    except OSError:
-        pass
+    # Create the journal cache
+    requests_cache.install_cache(os.path.join(CACHE_DIR, 'gdd'))
     # Keywords
     keywords = ['geochim', 'geol', 'earth', 'planetary', 'meteorit', 'usgs']
     # Get list of journals
