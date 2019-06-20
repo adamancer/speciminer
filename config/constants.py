@@ -23,5 +23,16 @@ for path in [INPUT_DIR, OUTPUT_DIR, CACHE_DIR, LOG_DIR]:
     except OSError:
         pass
 
-# Initiate logger
-logging.config.dictConfig(yaml.safe_load(open(LOG_CONFIG_FILE, 'r')))
+# Initiate logger and fix file path if script called from root
+log_config = yaml.safe_load(open(LOG_CONFIG_FILE, 'r'))
+for _, handler in log_config['handlers'].items():
+    try:
+        fn = handler['filename']
+    except KeyError:
+        pass
+    else:
+        if fn.startswith('..'):
+            fn = fn[2:].lstrip('/\\')
+        fp = os.path.realpath(os.path.join(BASE_DIR, fn.replace('/', os.sep)))
+        handler['filename'] = fp
+logging.config.dictConfig(log_config)
