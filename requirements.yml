@@ -1,6 +1,6 @@
 channels: [default]
 dependencies:
-- python=2.7
+- python
 - flask
 - lxml
 - matplotlib
@@ -10,4 +10,4 @@ dependencies:
 - sqlalchemy
 - unidecode
 - pip: [requests_cache==0.4.12]
-name: speciminer2
+name: speciminer

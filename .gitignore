@@ -1,5 +1,8 @@
+__pycache__/
+*.py[cod]
+
 database/v*/*
-database/*config.yml
+config/*.json
 docs/*
 input/*
 output/*
