@@ -1,22 +1,28 @@
 from __future__ import unicode_literals
+
 import logging
-logger = logging.getLogger(__name__)
-
 import sys
-sys.path.append('..')
-sys.path.append('../..')
-
 import json
 import re
 
 from flask import Flask, make_response, render_template, request
 from sqlalchemy import and_, or_
 
+sys.path.insert(0, '..')
+from config.constants import INPUT_DIR
 from database.database import Document, Journal, Link, Part, Specimen, Snippet
 from database.queries import Query
 from miners.bhl.bhl import route_request
 from miners.link import get_specimens
 from miners.parser import Parser
+
+
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Loading cluster.py')
+
+
 
 
 PARSER = Parser()
@@ -76,7 +82,7 @@ def document(doc_id):
                      Journal.topic.label('jour_topic')) \
               .distinct() \
               .filter(Document.id == doc_id)
-    logging.debug(query)
+    logger.debug(query)
     doc = query.first()
     # Get specimen info
     query = db.query(Link.id,
@@ -92,7 +98,7 @@ def document(doc_id):
                       Snippet.doc_id == doc_id,
                       or_(Link.spec_num.like('NMNH%'),
                           Link.spec_num.like('USNM%')))
-    logging.debug(query)
+    logger.debug(query)
     rows = query.all()
     spec_nums = {}
     mapped = {}

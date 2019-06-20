@@ -1,12 +1,13 @@
-"""Defines methods to interact with the database of citations"""
+"""Defines methods to interact with the citation database"""
+
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
 from builtins import str
 from builtins import object
-import logging
 
+import logging
 import datetime as dt
 import json
 import os
@@ -19,6 +20,14 @@ from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.inspection import inspect
 
 from .database import engine, Session, Document, Journal, Snippet, Specimen
+
+
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Loading queries.py')
+
+
 
 
 class _Query(object):
@@ -187,7 +196,7 @@ class _Query(object):
             primary_key = [primary_key]
         fltr = {k: kwargs[k] for k in primary_key if kwargs.get(k) is not None}
         if fltr and self.session.query(table).filter_by(**fltr).first():
-            return self.update(table, primary_key[0], **kwargs)
+            return self.update(table, **kwargs)
         else:
             return self.insert(table, **kwargs)
 
@@ -206,19 +215,19 @@ class _Query(object):
             if self._objects:
                 for key, vals in self._objects.items():
                     vals = list(vals.values())
-                    logging.debug('Saving {:,} records in {}'.format(len(vals), key))
+                    logger.debug('Saving {:,} records in {}'.format(len(vals), key))
                     self.session.bulk_save_objects(self._mappers[key], vals)
                 self._objects = {}
             if self._insert_mappings:
                 for key, vals in self._insert_mappings.items():
                     vals = list(vals.values())
-                    logging.debug('Inserting {:,} records into {}'.format(len(vals), key))
+                    logger.debug('Inserting {:,} records into {}'.format(len(vals), key))
                     self.session.bulk_insert_mappings(self._mappers[key], vals)
                 self._insert_mappings = {}
             if self._update_mappings:
                 for key, vals in self._update_mappings.items():
                     vals = list(vals.values())
-                    logging.debug('Updating {:,} records in {}'.format(len(vals), key))
+                    logger.debug('Updating {:,} records in {}'.format(len(vals), key))
                     self.session.bulk_update_mappings(self._mappers[key], vals)
                 self._update_mappings = {}
             self.session.commit()
@@ -243,6 +252,11 @@ class Query(_Query):
 
     def __init__(self, *args, **kwargs):
         super(Query, self).__init__(*args, **kwargs)
+
+
+    def get_document(self, gdd_id):
+        """Checks if a document with given gdd_id has already been checked"""
+        return self.query(Document.id).filter(Document.id == gdd_id).first()
 
 
     def read_bibjson(self, fp):
@@ -274,9 +288,3 @@ class Query(_Query):
         if row is not None:
             return [s.strip('?') for s in [row.doc_topic, row.jour_topic] if s]
         return []
-
-
-
-if __name__ == '__main__':
-    #Query().read_bibjson(os.path.join('output', 'bibjson'))
-    print(Query().get_topics(37328))

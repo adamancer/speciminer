@@ -1,16 +1,14 @@
+"""Defines methods for determining the subject area of a string"""
+
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
-
 from builtins import object
-import logging
 
-import sys
-sys.path.append('..')
-
-import json
 import glob
+import json
+import logging
 import os
 import pprint as pp
 import re
@@ -25,6 +23,14 @@ try:
     requests = ReRequest()
 except ImportError:
     import requests
+
+
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Loading topic.py')
+
+
 
 
 Mapping = namedtuple('Mapping', ['rank', 'value', 'dept'])
@@ -77,37 +83,33 @@ class Topicker(object):
             ordered[dept] = keywords.pop(dept)
         for dept in sorted(keywords):
             ordered[dept] = keywords[dept]
-        #for key, vals in ordered.iteritems():
-        #    print key
-        #    print '\n'.join(vals)
-        #raw_input('paused')
         return ordered
 
 
     def get_names(self, text, **kwargs):
-        """Returns specimen metadata from the Smithsonian"""
-        logging.debug(u'Seeking taxonomic names in "{}"'.format(text))
+        """Returns taxonomic names fouind in the given text"""
+        logger.debug(u'Seeking taxonomic names in "{}"'.format(text))
         url = 'http://gnrd.globalnames.org/name_finder.json'
         headers = {'UserAgent': 'MinSciBot/0.1 (mansura@si.edu)'}
-        params = {'text': unidecode(text)}
+        params = {'text': unidecode(text[:5000])}
         params.update(**kwargs)
         response = requests.get(url, headers=headers, params=params)
-        if not '.local' in url and hasattr(response, 'from_cache') and not response.from_cache:
-            logging.debug(u'Retrieved {} from server'.format(response.request.url))
-            time.sleep(5)
-        else:
-            logging.debug(u'Retrieved {} from cache'.format(response.request.url))
+        mask = 'Retrieved {} from server'
+        if hasattr(response, 'from_cache') and not response.from_cache:
+            mask = 'Retrieved {} from cache'
+            time.sleep(3)
+        logger.debug(mask.format(response.request.url))
         sci_names = []
         if response.status_code == 200:
             names = response.json().get('names', [])
             sci_names = self.clean_names([n['scientificName'] for n in names])
-        logging.debug(u'Found {} names: {}'.format(len(sci_names), ', '.join(sci_names)))
+        logger.debug(u'Found {} names: {}'.format(len(sci_names), ', '.join(sci_names)))
         return sci_names
 
 
     def resolve_names(self, names, **kwargs):
         """Resolve taxonomic names"""
-        logging.debug(u'Resolving taxonomic names "{}"'.format(names))
+        logger.debug(u'Resolving taxonomic names "{}"'.format(names))
         url = 'http://resolver.globalnames.org/name_resolvers.json'
         headers = {'UserAgent': 'MinSciBot/0.1 (mansura@si.edu)'}
         params = {
@@ -117,64 +119,62 @@ class Topicker(object):
         }
         params.update(**kwargs)
         response = requests.get(url, headers=headers, params=params)
-        if not '.local' in url and hasattr(response, 'from_cache') and not response.from_cache:
-            logging.debug(u'Retrieved {} from server'.format(response.request.url))
-            time.sleep(5)
-        else:
-            logging.debug(u'Retrieved {} from cache'.format(response.request.url))
+        mask = 'Retrieved {} from server'
+        if hasattr(response, 'from_cache') and not response.from_cache:
+            mask = 'Retrieved {} from cache'
+            time.sleep(3)
+        logger.debug(mask.format(response.request.url))
         sci_names = []
         if response.status_code == 200:
             for results in response.json().get('data', []):
                 if results['is_known_name']:
                     for row in results['results']:
-                        import pprint as pp
-                        #pp.pprint(row)
                         vernaculars = row.get('vernaculars', [])
                         print(vernaculars)
             sci_names = self.clean_names([n['scientificName'] for n in names])
-        logging.debug(u'Found {} names: {}'.format(len(sci_names), ', '.join(sci_names)))
+        logger.debug(u'Found {} names: {}'.format(len(sci_names), ', '.join(sci_names)))
         return sci_names
 
 
     def get_tsns(self, name, **kwargs):
-        """Returns specimen metadata from the Smithsonian"""
-        logging.debug(u'Seeking TSNs for "{}"'.format(name))
+        """Returns TSNs matching the given name"""
+        logger.debug(u'Seeking TSNs for "{}"'.format(name))
         url = 'http://www.itis.gov/ITISWebService/services/ITISService/searchByScientificName'
         headers = {'UserAgent': 'MinSciBot/0.1 (mansura@si.edu)'}
         params = {'srchKey': name}
         params.update(**kwargs)
         response = requests.get(url, headers=headers, params=params)
-        if not '.local' in url and hasattr(response, 'from_cache') and not response.from_cache:
-            logging.debug(u'Retrieved {} from server'.format(response.request.url))
-            time.sleep(5)
-        else:
-            logging.debug(u'Retrieved {} from cache'.format(response.request.url))
+        mask = 'Retrieved {} from server'
+        if hasattr(response, 'from_cache') and not response.from_cache:
+            mask = 'Retrieved {} from cache'
+            time.sleep(3)
+        logger.debug(mask.format(response.request.url))
         tsns = []
         if response.status_code == 200:
             root = etree.fromstring(response.text)
             for child in root:
                 for tag in child.iter('{*}tsn'):
                     tsns.append(tag.text)
-        logging.debug(u'Found {} TSNs'.format(len(tsns)))
+        logger.debug(u'Found {} TSNs'.format(len(tsns)))
         if len(tsns) > 100:
-            logging.debug(u'Limited results to first 100 TSNs')
+            logger.debug(u'Limited results to first 100 TSNs')
             tsns = tsns[:100]
         return tsns
 
 
     def get_hierarchy(self, tsn, **kwargs):
-        """Returns specimen metadata from the Smithsonian"""
-        logging.debug(u'Retrieving hierarchy for {}'.format(tsn))
+        """Returns the taxonomic hierarchy for a given TSN"""
+        logger.debug(u'Retrieving hierarchy for {}'.format(tsn))
         url = 'http://www.itis.gov/ITISWebService/services/ITISService/getFullHierarchyFromTSN'
         headers = {'UserAgent': 'MinSciBot/0.1 (mansura@si.edu)'}
         params = {'tsn': tsn}
         params.update(**kwargs)
         response = requests.get(url, headers=headers, params=params)
-        if not '.local' in url and hasattr(response, 'from_cache') and not response.from_cache:
-            logging.debug(u'Retrieved {} from server'.format(response.request.url))
-            time.sleep(5)
-        else:
-            logging.debug(u'Retrieved {} from cache'.format(response.request.url))
+        mask = 'Retrieved {} from server'
+        if hasattr(response, 'from_cache') and not response.from_cache:
+            mask = 'Retrieved {} from cache'
+            time.sleep(3)
+        logger.debug(mask.format(response.request.url))
         if response.status_code == 200:
             root = etree.fromstring(response.text)
             for child in root:
@@ -183,19 +183,20 @@ class Topicker(object):
                     rank = item.findtext('{*}rankName')
                     name = item.findtext('{*}taxonName')
                     if rank is not None:
-                        #logging.debug(u'{} == {}'.format(rank.upper(), name))
+                        #logger.debug(u'{} == {}'.format(rank.upper(), name))
                         ranks[rank.lower()] = name.lower()
                 return ranks
 
 
     def map_to_department(self, hierarchy):
+        """Maps a taxonomic hierarchy to an NMNH department"""
         # Ensure that the hierarchy has at least one of the keys needed for
         # the comparison to NMNH departments
         avail = set([mp.rank for mp in self.mappings])
         if not [k for k in avail if k in hierarchy]:
-            logging.debug(u'Not enough info to place the following taxon:')
+            logger.debug(u'Not enough info to place the following taxon:')
             for rank in hierarchy:
-                logging.debug(u'{} == {}'.format(rank.upper(), hierarchy[rank]))
+                logger.debug(u'{} == {}'.format(rank.upper(), hierarchy[rank]))
             return
         # Assign to a division based on the mapping
         for mp in self.mappings:
@@ -203,34 +204,36 @@ class Topicker(object):
             if mp.value.startswith('!'):
                 eq = not eq
             if eq:
-                logging.debug(u'Mapped to {}'.format(mp.dept))
+                logger.debug(u'Mapped to {}'.format(mp.dept))
                 return mp.dept
         else:
             # Log failures
-            logging.debug(u'Could not classify the following taxon:')
+            logger.debug(u'Could not classify the following taxon:')
             for rank in hierarchy:
-                logging.debug(u'{} == {}'.format(rank.upper(), hierarchy[rank]))
+                logger.debug(u'{} == {}'.format(rank.upper(), hierarchy[rank]))
 
 
     def match_dept_keywords(self, text, i=None, j=None):
-        words = [w for w in re.split(ur'\W', text.lower())]
+        """Matches a list of keywords"""
+        words = [w for w in re.split(r'\W', text.lower())]
         for dept in list(self.keywords.keys())[i:j]:
             for pattern in self.keywords[dept]:
                 for word in words:
                     if re.match('^' + pattern + '$', word, flags=re.I):
                         if len(word) < 3:
                             raise ValueError('Bad pattern in {}: {}'.format(dept, pattern))
-                        logging.debug(u'Matched {} on keyword {}={}'.format(dept, pattern, word.lower()))
+                        logger.debug(u'Matched {} on keyword {}={}'.format(dept, pattern, word.lower()))
                         return dept, word.lower()
         return None, None
 
 
     @staticmethod
     def clean_names(names):
+        """Standardizes the formatting of a list of names"""
         cleaned = []
         for name in names:
-            cleaned.extend([s.strip() for s in name.split(':')])
-        return cleaned
+            cleaned.extend([s.strip() for s in re.split(r'[:\(\)]', name)])
+        return sorted(list(set([n for n in cleaned if n])))
 
 
     @staticmethod
@@ -239,11 +242,11 @@ class Topicker(object):
         for key in ['class', 'order', 'family']:
             for name in names:
                 if name == taxon.get(key, '').lower():
-                    logging.debug(u'Scored match at {0:.1f} points'.format(1))
+                    logger.debug(u'Scored match at {0:.1f} points'.format(1))
                     return 1
         taxon = [s.lower() for s in list(taxon.values())]
-        logging.debug(u'Names: {}'.format('; '.join(names)))
-        logging.debug(u'Taxon: {}'.format('; '.join(taxon)))
+        logger.debug(u'Names: {}'.format('; '.join(names)))
+        logger.debug(u'Taxon: {}'.format('; '.join(taxon)))
         score = 0
         for name in names:
             if name in taxon:
@@ -251,7 +254,7 @@ class Topicker(object):
             elif any([(name in s) for s in taxon]):
                 score += 0.5
         score = score / len(names)
-        logging.debug(u'Scored match at {0:.1f} points'.format(score))
+        logger.debug(u'Scored match at {0:.1f} points'.format(score))
         return score
 
 
@@ -267,21 +270,20 @@ class Topicker(object):
                 if count == max(counts.values())][0]
 
 
-
     def get_department(self, text, **kwargs):
-        logging.debug(u'Matching department in "{}"'.format(text))
+        logger.debug(u'Matching department in "{}"'.format(text))
         # Check keyword lists for non-biological collections, including paleo
         dept, match = self.match_dept_keywords(text, j=3)
         if dept:
             return dept
         # Check mappings and hints for a previously encountered match
-        words = [s.lower() for s in re.split(ur'\W', text) if s]
+        words = [s.lower() for s in re.split(r'\W', text) if s]
         for mapping in self.mappings:
             if mapping.value.lower() in words:
                 return mapping.dept
         for key, dept in list(self.hints.items()):
             if key.lower() in [s.lower() for s in words]:
-                logging.debug(u'Matched {}={} in hints'.format(key, dept))
+                logger.debug(u'Matched {}={} in hints'.format(key, dept))
                 return dept
         # Proceed with the more complex search since no easy match was found
         stop = False
@@ -302,7 +304,7 @@ class Topicker(object):
                     # No match, so try to determine the department
                     dept = self.map_to_department(hierarchy)
                     try:
-                        logging.debug(u'Dept: {}'.format(self.depts[dept]))
+                        logger.debug(u'Dept: {}'.format(self.depts[dept]))
                     except KeyError:
                         pass
                     else:
@@ -312,7 +314,7 @@ class Topicker(object):
                         except KeyError:
                             depts[dept] = score
                         msg = 'Cumulative score: {}={}'.format(dept, depts[dept])
-                        logging.debug(msg)
+                        logger.debug(msg)
                         if (score >= 0.8 or
                             depts[dept] >= 8 or
                             len(depts) == 1 and depts[dept] >= 5):
@@ -324,7 +326,7 @@ class Topicker(object):
                 break
         if depts:
             dept = self.guess_department(depts)
-            logging.debug(u'Matched to {}'.format(self.depts[dept]))
+            logger.debug(u'Matched to {}'.format(self.depts[dept]))
             return dept
         # Check keyword lists for biological collections
         dept, match = self.match_dept_keywords(text, i=3)
@@ -333,19 +335,19 @@ class Topicker(object):
 
 
     def get_department2(self, text, **kwargs):
-        logging.debug(u'Matching department in "{}"'.format(text))
+        logger.debug(u'Matching department in "{}"'.format(text))
         # Check keyword lists for non-biological collections, including paleo
         dept, match = self.match_dept_keywords(text, j=3)
         if dept:
             return dept
         # Check mappings and hints for a previously encountered match
-        words = [s.lower() for s in re.split(ur'\W', text) if s]
+        words = [s.lower() for s in re.split(r'\W', text) if s]
         for mapping in self.mappings:
             if mapping.value.lower() in words:
                 return mapping.dept
         for key, dept in list(self.hints.items()):
             if key.lower() in [s.lower() for s in words]:
-                logging.debug(u'Matched {}={} in hints'.format(key, dept))
+                logger.debug(u'Matched {}={} in hints'.format(key, dept))
                 return dept
         # Proceed with the more complex search since no easy match was found
         stop = False
@@ -356,10 +358,7 @@ class Topicker(object):
 
     def add_hint(self, hierarchy, dept):
         # Add order and family to hints
-        for rank in ['phylum',
-                     'order',
-                     'suborder',
-                     'family']:
+        for rank in ['phylum', 'order', 'suborder', 'family']:
             try:
                 name = hierarchy[rank].lower()
             except KeyError:
@@ -370,16 +369,4 @@ class Topicker(object):
                     with open('hints.json', 'w') as f:
                         json.dump(self.hints, f, indent=4, sort_keys=True)
                     msg = 'Added {}={} to hints'.format(name, dept)
-                    logging.debug(msg)
-
-
-
-
-
-if __name__ == '__main__':
-    import requests_cache
-    requests_cache.install_cache()
-    title = u'New species and distribution of the genus Marilia Muller (Trichoptera: Odontoceridae) in Mexico and Central America'
-    print('Analyzing "{}"...'.format(title))
-    topicker = Topicker()
-    print(topicker.get_department2(title))
+                    logger.debug(msg)

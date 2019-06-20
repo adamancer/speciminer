@@ -1,11 +1,28 @@
+"""Defines tables in the citation database"""
+
 from __future__ import unicode_literals
+
+import logging
 import os
 
 import yaml
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import (Column, Boolean, Integer, String, ForeignKey, create_engine)
+from sqlalchemy import (Column,
+                        Boolean,
+                        Integer,
+                        String,
+                        ForeignKey,
+                        create_engine)
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.schema import Index, UniqueConstraint
+
+
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Loading database.py')
+
+
 
 
 Base = declarative_base()
@@ -29,6 +46,7 @@ class Document(Base):
     year = Column(String)
     topic = Column(String)
     num_specimens = Column(Integer)
+    num_snippets = Column(Integer)
 
 
 class Snippet(Base):
@@ -141,7 +159,7 @@ def get_path(relpath, delim='/'):
 
 
 
-params = yaml.load(open(get_path('config.yml'), 'r'))
+params = yaml.safe_load(open(get_path('config.yml'), 'r'))
 if params['use'] == 'sqlite':
     path = get_path(params['sqlite']['path'])
     try:

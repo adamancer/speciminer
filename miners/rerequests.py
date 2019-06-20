@@ -8,6 +8,12 @@ import time
 import requests
 
 
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Loading rerequests.py')
+
+
 class ReRequest(object):
 
     def __init__(self, max_retries=8, base_wait=2, min_wait=2, stop_codes=None):
@@ -29,7 +35,7 @@ class ReRequest(object):
                 url = response.request.url
                 msg = '{}: {}. Waiting {} seconds to retry (retries={})...'.format(url, code, wait, 1)
                 print(msg)
-                logging.debug(msg)
+                logger.debug(msg)
                 time.sleep(wait)
             response = self._methods[method](*args, **kwargs)
             code = response.status_code

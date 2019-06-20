@@ -10,15 +10,25 @@ import re
 import yaml
 
 
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Loading cluster.py')
+
+
+
+
 def epen(fn, *args, **kwargs):
     fn = os.path.basename(fn)
     return open(os.path.join(os.path.dirname(__file__), fn), *args, **kwargs)
 
 
+
+
 class Cluster(object):
 
     def __init__(self):
-        self.regex = yaml.load(epen(os.path.abspath('regex.yml'), 'r'))
+        self.regex = yaml.safe_load(epen(os.path.abspath('regex.yml'), 'r'))
         self.regex['catnum'] = self.regex['catnum'].format(**self.regex)
         self.mask = re.compile(self.regex['mask'].format(**self.regex))
         self.simple = re.compile(self.regex['simple'])
@@ -29,8 +39,6 @@ class Cluster(object):
         self.codes = [s.strip() for s in self.regex['code'].strip('()').split('|')]
         self.metadata = []
         self.expand_short_ranges = True
-        if self.regex['troubleshoot']:
-            logging.basicConfig(level=logging.DEBUG)
         # A valid last number is any catalog number, suffix, or range. However,
         # the regexes defined in regex.yml are less selective than is needed
         # here. We'll limit a "good" value to a subset of high-quality matches.
@@ -73,7 +81,7 @@ class Cluster(object):
             # Check if suffixed numbers are long enough
             vals = val.split('-')
             result = len(vals[0]) >= minlen
-        logging.info('"%s" %slooks like a catnum', val, '' if result else 'does not ')
+        logger.info('"%s" %slooks like a catnum', val, '' if result else 'does not ')
         return result
 
 
@@ -97,11 +105,13 @@ class Cluster(object):
         return bool(re.search(r'[a-z]-[a-z]$', val))
 
 
-
     def trim_bad_values(self, val):
         """Trims unlikely catalog numbers/suffixes from a list"""
-        logging.info('Trimming "%s"', val)
+        logger.info('Trimming bad values from "%s"', val)
         orig = val
+        # Trim a single number if the first number is five or six characters
+        if re.match(r'^\d{5,6} \d$', val):
+            return val.split(' ')[0]
         # Strip out filler
         val = re.sub(self.regex['filler'], '', val)
         # Split on common delimiters
@@ -112,23 +122,26 @@ class Cluster(object):
         # Go forward through the values, stopping at the first stray alpha
         for i, val in enumerate(vals):
             if val.strip().isalpha() and len(val.strip()) > 1:
-                logging.debug('Trimmed "%s" (alphabetic)', val)
+                logger.debug('Trimmed "%s" (alphabetic)', val)
                 break
         vals = vals[:i + 1]
         if vals != orig:
-            logging.info('Trimmed to %s', vals)
+            logger.info('Trimmed to %s', vals)
         return self.join(vals).rstrip(' ,;&')
 
 
     def _validate_last(self, vals):
         """Checks if last value in list appears to be a cat number or suffix"""
+        logger.debug('Checking last character in %s...', vals)
+        # Otherwise mash that number together
         val = vals[-1].strip('# ')
-        if val.replace(' ', '').isdigit() or self.ends_with_range(val):
-            val = val.replace(' ', '')
-        logging.debug('Checking %s...', val)
+        despaced = val.replace(' ', '')
+        if ((despaced.isdigit() and len(despaced) <= 6)
+            or self.ends_with_range(val)):
+                val = val.replace(' ', '')
         # Always trim non-alphanumeric characters
         if re.match(r'[^A-z0-9]', val):
-            logging.debug('Trimmed "%s" (not alphanumeric)', val)
+            logger.debug('Trimmed "%s" (not alphanumeric)', val)
             return False
         # If multiple values, consider the preceding delimiter. Semicolons
         # and commas are hard delimiters, and values after these characters
@@ -138,7 +151,7 @@ class Cluster(object):
         is_digit = val.isdigit()
         is_suffix = bool(re.match(self.p_suffix, val))
         is_alpha_suffix = bool(re.match(self.p_alpha_suffix, val))
-        logging.info('%s: is_valid=%s, is_digit=%s,'
+        logger.info('%s: is_valid=%s, is_digit=%s,'
                      ' is_suffix=%s, is_alpha_suffix=%s',
                      val, is_valid, is_digit, is_suffix, is_alpha_suffix)
         if len(vals) > 2:
@@ -146,17 +159,17 @@ class Cluster(object):
             if delim in ',;':
                 # Log each case separately for troubleshooting purposes
                 if is_alpha_suffix and (len(val) > 1 or val not in ('lIO')):
-                    logging.debug('"%s" is a valid alpha suffix', val)
+                    logger.debug('"%s" is a valid alpha suffix', val)
                 elif is_valid and not is_digit:
-                    logging.debug('"%s" is an alphanumeric catnum', val)
+                    logger.debug('"%s" is an alphanumeric catnum', val)
                 elif is_valid and is_digit and len(val) >= 4:
-                    logging.debug('"%s" is a numeric catnum 4 digits or longer', val)
+                    logger.debug('"%s" is a numeric catnum 4 digits or longer', val)
                 else:
-                    logging.debug('Trimmed "%s" (weak post-delim value)', val)
+                    logger.debug('Trimmed "%s" (weak post-delim value)', val)
                     return False
             elif delim == '.' and is_alpha_suffix:
                 return False
-        logging.debug('Stopped trimming at "%s"', val)
+        logger.debug('Stopped trimming at "%s"', val)
         return True
 
 
@@ -172,7 +185,7 @@ class Cluster(object):
         else:
             # Find discrete suffixes (123456a,b,d)
             suffixes = re.findall(r'(?<![A-z])([A-z])(?![A-z])', val)
-        logging.debug('Suffixes in "%s": %s', val, suffixes)
+        logger.debug('Suffixes in "%s": %s', val, suffixes)
         return suffixes
 
 
@@ -192,7 +205,7 @@ class Cluster(object):
                 cleaned.extend(list(val))
             elif val:
                 cleaned.append(val)
-        logging.debug('Cleaned: {}'.format(vals))
+        logger.debug('Cleaned: {}'.format(vals))
         return vals
 
 
@@ -204,14 +217,19 @@ class Cluster(object):
         """
         if related is None:
             related = []
-        # Are all values valid catalog numebrs?
+        # Are all values valid catalog numbers?
         if self.all_valid_catnums(vals, minlen=4):
-            logging.debug('Aborted: Numbers are already valid')
+            logger.debug('Aborted: Numbers are already valid')
             return vals
+        # Does the value match a catalog number followed by a count?
+        #pattern = r'(?<!\d)\d{5,6} \d$'
+        #if re.search(pattern,''.join(vals)):
+        #    return [vals[0]]
         # Are all the numbers minlen digits or longer?
-        nums = [p for p in vals if re.search(r'^(\d+[A-z]?|[A-z](-[A-z])?)$', p)]
+        pattern = r'^(\d+[A-z]?|[A-z](-[A-z])?)$'
+        nums = [p for p in vals if re.search(pattern, p)]
         #if min([len(n) for n in nums]) >= minlen:
-        #    logging.debug('Aborted: Numbers are already the right length')
+        #    logger.debug('Aborted: Numbers are already the right length')
         #    return ''.join(vals)
         related += nums
         if maxlen is None:
@@ -223,13 +241,13 @@ class Cluster(object):
         for orig in vals:
             val = orig.rstrip(';& ')
             if re.match('[A-Z]{1,3} ?\d+', val):
-                logging.info('"%s" treated as whole/partial catalog number', val)
+                logger.info('"%s" treated as whole/partial catalog number', val)
                 if fragment and not [n for n in clustered if n.startswith(fragment)]:
                     clustered.append(fragment)
                 fragment = val
                 zap_frag = False
             elif val.isnumeric():
-                logging.info('"%s" treated as whole/partial catalog number', val)
+                logger.info('"%s" treated as whole/partial catalog number', val)
                 if len(fragment) == maxlen or zap_frag:
                     if fragment and not [n for n in clustered if n.startswith(fragment)]:
                         clustered.append(fragment)
@@ -239,25 +257,25 @@ class Cluster(object):
                 if len(fragment) > maxlen:
                     break
             elif val.isalpha() and len(val) == 1:
-                logging.info('"%s" treated as one-character suffix', val)
+                logger.info('"%s" treated as one-character suffix', val)
                 clustered.append((fragment + val).strip(';'))
                 zap_frag = True
             elif val != ' ' and fragment:
-                logging.info('"%s" treated as multi-character suffix', val)
+                logger.info('"%s" treated as multi-character suffix', val)
                 # Each val may contain one or more suffixes or suffix ranges
                 for val in self.split_on_delim(val):
                     for suffix in self.expand_alpha_suffixes(val):
                         clustered.append(fragment + suffix)
                         zap_frag = True
             else:
-                logging.warning('"%s" could not be combined', val)
+                logger.warning('"%s" could not be combined', val)
         else:
             # Checks if the remaining fragment should be added to clustered
             if fragment and not [n for n in clustered if n.startswith(fragment)]:
                 if len(fragment) >= minlen:
                     clustered.append(fragment)
                 else:
-                    logging.debug(u'Aborted: Bad fragment length')
+                    logger.debug(u'Aborted: Bad fragment length')
                     return vals
             try:
                 nums = [int(n) for n in nums if int(n) in clustered]
@@ -271,7 +289,7 @@ class Cluster(object):
                         break
                 else:
                     nums = clustered
-        logging.info('Combined: %s', nums)
+        logger.info('Combined: %s', nums)
         return nums
 
 
@@ -279,12 +297,15 @@ class Cluster(object):
         """Clusters related digits to better resemble catalog numbers"""
         if related is None:
             related = []
-        logging.debug('Clustering...')
+        logger.debug('Clustering...')
         orig = val
-        logging.debug('Orig: {}'.format(orig))
+        logger.debug('Orig: {}'.format(orig))
         # Format string to improve matches
         callback = lambda match: match.group(1).lower().strip(' -')
         val = re.sub('-? ?([A-z], ?[A-z](, ?[A-Z]))', callback, val)
+        # Check if all numbers are followed by one or more spaces
+        if len(re.findall(r'\d ', val)) == len(re.findall(r'\d', val)):
+            val = re.sub(r'(\d) ', r'\1', val)
         # Split off questionable numbers after the last delimiter. Earlier
         # versions of this part included the hyphen (-), but that doesn't work
         # well. A hyphen denotes a range, not a list, so it has a different
@@ -293,34 +314,34 @@ class Cluster(object):
         # Check for false hyphens and spacing errors
         if ' ' in val and len(val.replace(' ', '')) <= 10:
             val = val.replace(' ', '')
-            logging.debug('Stripping spaces: %s', val)
+            logger.debug('Stripping spaces: %s', val)
         if val.count('-') == 1:
             n1, n2 = [s.strip() for s in val.split('-')]
             if len(n1) <= 3 and 2 <= len(n2) <= 4:
                 val = n1 + n2
-                logging.debug('Removing bad hyphen: %s', val)
+                logger.debug('Removing bad hyphen: %s', val)
         # Don't try to cluster single numbers
         if re.search(r'^\d+[a-z]?$', val):
-            logging.debug('Aborted: Value appears to be a single number')
+            logger.debug('Aborted: Value appears to be a single number')
             return val
         # Don't try to cluster across different prefixes
         if re.search(r'\b\d+\b', val) and re.search(r'\b[A-Z]{1,3} ?\d+\b', val):
-            logging.debug('Aborted: Value mixes prefixed and unprefixed numbers')
+            logger.debug('Aborted: Value mixes prefixed and unprefixed numbers')
             return val
         # Leave values with / and a plausible suffix alone
         if val.count('/') == 1 and val.split('/')[-1].isnumeric():
-            logging.debug('Aborted: Slash-delimited suffix')
+            logger.debug('Aborted: Slash-delimited suffix')
             return val
         # Leave values with range keywords as-is
         if (re.search(self.regex['join_range'], val)
             and self.suf_range.search(val) is None):
-            logging.debug('Aborted: Value may be a range')
+            logger.debug('Aborted: Value may be a range')
             return val
         parts = [str(s) for s in re.split(r'([A-z]*\d+)', val) if s]
-        logging.debug('Parts: {}'.format(parts))
+        logger.debug('Parts: {}'.format(parts))
         if parts:
             parts = self.combine(self.clean(parts), minlen=minlen,
                                  maxlen=maxlen, related=related)
         clustered = self.join(parts)
-        logging.info('Clustered: %s', parts)
+        logger.info('Clustered: %s', parts)
         return clustered

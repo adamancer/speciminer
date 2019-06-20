@@ -2,9 +2,16 @@
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import logging
 import time
 
 import requests
+
+
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Loading api.py')
 
 
 
@@ -30,6 +37,17 @@ def get_document(doc_id):
 def get_journals(**kwargs):
     """Returns metadata about a set of GeoDeepDive documents"""
     url = 'https://geodeepdive.org/api/journals'
+    response = requests.get(url, params=kwargs)
+    print('Checking {}...'.format(response.url))
+    if hasattr(response, 'from_cache') and not response.from_cache:
+        time.sleep(1)
+    if response.status_code == 200:
+        return response.json().get('success', {}).get('data', [])
+    return []
+
+
+def get_snippets(**kwargs):
+    url = 'https://geodeepdive.org/api/snippets'
     response = requests.get(url, params=kwargs)
     print('Checking {}...'.format(response.url))
     if hasattr(response, 'from_cache') and not response.from_cache:

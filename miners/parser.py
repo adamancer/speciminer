@@ -9,9 +9,8 @@ from builtins import range
 from past.builtins import basestring
 from builtins import object
 from past.utils import old_div
-import logging
-logger = logging.getLogger(__name__)
 
+import logging
 import math
 import os
 import re
@@ -25,6 +24,14 @@ from unidecode import unidecode
 from .cluster import Cluster, epen
 
 
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Loading parser.py')
+
+
+
+
 IndexedSnippet = namedtuple('IndexedSnippet', ['text', 'start', 'end'])
 SpecNum = namedtuple('SpecNum', ['code', 'prefix', 'number', 'suffix'])
 
@@ -32,7 +39,7 @@ SpecNum = namedtuple('SpecNum', ['code', 'prefix', 'number', 'suffix'])
 class Parser(object):
 
     def __init__(self):
-        self.regex = yaml.load(epen(os.path.abspath('regex.yml'), 'r'))
+        self.regex = yaml.safe_load(epen(os.path.abspath('regex.yml'), 'r'))
         self.regex['catnum'] = self.regex['catnum'].format(**self.regex)
         self.mask = re.compile(self.regex['mask'].format(**self.regex))
         self.simple = re.compile(self.regex['simple'])
@@ -49,7 +56,8 @@ class Parser(object):
     def sprint(self, *msg):
         if self.regex['debug']:
             try:
-                print(' '.join([s if isinstance(s, basestring) else repr(s) for s in msg]).encode('cp1252'))
+                print(' '.join([s if isinstance(s, basestring) else repr(s)
+                                for s in msg]))
             except UnicodeEncodeError:
                 pass
 
@@ -60,13 +68,13 @@ class Parser(object):
 
     def findall(self, text):
         """Finds all likely catalog numbers within the given string"""
-        logging.info('Search "%s"', text)
+        logger.info('Search "%s"', text)
         matches = []
         for match in set([m[0] for m in self.mask.findall(text)]):
             if re.search(r'\d', match):
                 matches.append(match)
         matches.sort()
-        logging.info(u'Found catalog numbers: %s"', matches)
+        logger.info(u'Found catalog numbers: %s"', matches)
         return sorted(matches, key=len)
 
 
@@ -106,7 +114,7 @@ class Parser(object):
     def parse(self, val, expand_short_ranges=True):
         """Parses catalog numbers from a string"""
         self.expand_short_ranges = expand_short_ranges
-        val = val.decode('utf-8')
+        #val = val.decode('utf-8')
         orig = val
         # Split value on strings that look like museum codes. This works
         # okay for now, but would fail on something like Yale Peabody (YPM).
@@ -115,7 +123,7 @@ class Parser(object):
         for code in self.codes:
             if val.endswith('({})'.format(code)):
                 val = code + ' ' + val[:-(len(code) + 2)].strip()
-                logging.debug('Moved "%s" to front of string', code)
+                logger.debug('Moved "%s" to front of string', code)
             val = val.replace(code, code + ' ').replace('  ', ' ')
         words = [w for w in re.split('([A-Z]{3,} ?)', val) if w and w not in '()']
         code = ''
@@ -136,14 +144,14 @@ class Parser(object):
                 try:
                     parsed = self._parse(val)
                 except ValueError:
-                    logging.warning('Could not parse "%s" from "%s"', val, orig)
+                    logger.warning('Could not parse "%s" from "%s"', val, orig)
                 except:
-                    logging.error('Could not parse "%s" from "%s"', val, orig)
+                    logger.error('Could not parse "%s" from "%s"', val, orig)
                 else:
                     vals.extend(parsed)
-                    logging.info('Parsed "{}" as {}'.format(val, parsed))
+                    logger.info('Parsed "{}" as {}'.format(val, parsed))
             else:
-                logging.warning('Museum code only: %s', orig)
+                logger.warning('Museum code only: %s', orig)
         return vals
 
 
@@ -348,7 +356,7 @@ class Parser(object):
         val = re.sub(self.regex['filler'], '', val)
         # Identify prefix and number
         try:
-            prefix = re.match(ur'\b[A-Z ]+', val).group()
+            prefix = re.match(r'\b[A-Z ]+', val).group()
         except AttributeError:
             prefix = ''
         else:
@@ -500,46 +508,13 @@ class Parser(object):
 
 
 if __name__ == '__main__':
-    # Test cluster
-    if False:
-        parser = Parser()
-        val = 'USNM 201 1 17, 201 1 19, 201 120a, b, d-f, and 201 123a-c'
-        val = 'USNM 200961, 200982a, c, e, 201182a-e, 201183a, 201184'
-        clustered = parser.cluster(val)
-        print('VERBATIM:  ', val)
-        print('CLUSTERED: ', clustered)
-    # Test filter_records
-    if False:
-        import pprint as pp
-        catnum = u'USNM 147442'
-        records = get_specimens(catnum)
-        keywords = get_keywords('arthropods')
-        pp.pprint(records)
-        print(filter_records(records, catnum, keywords=keywords))
-    # Test the catalog number parser
-    if False:
-        parser = Parser()
-        print('-' * 60)
-        print('Testing parser')
-        print('-' * 60)
-        for val in parser.regex['test']:
-            matches = parser.findall(val)
-            parsed = []
-            for m in matches:
-                parsed.extend(parser.parse(m))
-            print('VERBATIM:', val)
-            print('MATCHES: ', matches)
-            print('PARSED:\n ', '\n  '.join(parsed))
-            print('-' * 60)
-            if parser.regex['troubleshoot']:
-                break
-    if True:
-        parser = Parser()
-        if parser.regex['troubleshoot']:
-            parser.regex['debug'] = 1
-        for key in sorted(parser.regex['testdict']):
-            expected = parser.regex['testdict'][key]
-            if not parser.regex['troubleshoot'] or key == parser.regex['troubleshoot']:
+    parser = Parser()
+    if parser.regex['troubleshoot']:
+        parser.regex['debug'] = 1
+    for key in sorted(parser.regex['testdict']):
+        expected = parser.regex['testdict'][key]
+        if (not parser.regex['troubleshoot']
+            or key == parser.regex['troubleshoot']):
                 matches = parser.findall(key)
                 parsed = []
                 for m in matches:
@@ -549,5 +524,5 @@ if __name__ == '__main__':
                     print(u'    Found  :', parsed)
                     print(u'    Missing:', sorted(list(set(expected) - set(parsed))))
                     print(u'    Extra  :', sorted(list(set(parsed) - set(expected))))
-                elif parser.regex['troubleshoot']:
+                else:#elif parser.regex['troubleshoot']:
                     print(u'{}: Passed'.format(key))

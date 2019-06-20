@@ -4,7 +4,6 @@ from builtins import str
 from builtins import range
 from builtins import object
 import logging
-
 import re
 import time
 
@@ -13,6 +12,14 @@ from unidecode import unidecode
 from nltk.corpus import stopwords
 
 from .parser import Parser
+
+
+
+
+logger = logging.getLogger('speciminer')
+logger.info('Loading link.py')
+
+
 
 
 class Score(object):
@@ -127,7 +134,7 @@ class Score(object):
         if keywords:
             match = keywords & refwords
             if match:
-                logging.debug('Keyword match: %s (%s)', '; '.join(sorted(list(match))), rec['occurrenceID'])
+                logger.debug('Keyword match: %s (%s)', '; '.join(sorted(list(match))), rec['occurrenceID'])
             if match_all and len(match) == len(keywords):
                 score = multiplier
             elif not match_all:
@@ -162,25 +169,25 @@ def get_specimens(*args, **kwargs):
         try:
             response = _get_specimens(*args, **kwargs)
         except:
-            logging.error('Request failed: %s', args)
+            logger.error('Request failed: %s', args)
             if i > 3:
                 raise
         else:
             if response.status_code == 200:
-                logging.info('Request succeeded: %s (%s)', response.url, response.status_code)
+                logger.info('Request succeeded: %s (%s)', response.url, response.status_code)
                 try:
                     records = response.json() \
                                       .get('response', {}) \
                                       .get('content', {}) \
                                       .get('SimpleDarwinRecordSet', [])
                 except AttributeError:
-                    logging.info('No records found')
+                    logger.info('No records found')
                     return []
                 else:
-                    logging.info('%d records found', len(records))
+                    logger.info('%d records found', len(records))
                     return [rec['SimpleDarwinRecord'] for rec in records]
-            logging.info('Request failed: %s (%s)', response.url, response.status_code)
-        logging.info('Retrying in %d s (retry %d/13)', 2**i, i)
+            logger.info('Request failed: %s (%s)', response.url, response.status_code)
+        logger.info('Retrying in %d s (retry %d/13)', 2**i, i)
         time.sleep(2**i)
 
 
@@ -272,7 +279,7 @@ def get_keywords(text, minlen=5, blacklist=None, endings=None, replacements=None
 
 def filter_records(records, refnum, keywords=None, dept=None):
     """Returns records that match a reference catalog number"""
-    logging.debug('Filtering matches for %s', refnum)
+    logger.debug('Filtering matches for %s', refnum)
     depts = {
         'an': 'Anthropology',
         'bt': 'Botany',

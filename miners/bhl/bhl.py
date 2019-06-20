@@ -4,32 +4,32 @@ from __future__ import unicode_literals
 
 from builtins import str
 from builtins import range
+
 import logging
-logger = logging.getLogger(__name__)
-
-import sys
-sys.path.append('..')
-sys.path.append('../..')
-
 import os
 import re
 import time
 from collections import OrderedDict, namedtuple
 
 import requests
-import requests_cache
 import yaml
 from lxml import etree
 from sqlalchemy import and_, or_
 
-from database.database import Document, Journal, Part, Snippet, Specimen, Taxon
-from database.queries import Query
-from miners.parser import Parser
+from .database.database import Document, Journal, Part, Snippet, Specimen, Taxon
+from .database.queries import Query
+from .miners.parser import Parser
 
 
 
 
-API_KEY = yaml.load(open(os.path.join(
+logger = logging.getLogger('speciminer')
+logger.info('Loading bhl.py')
+
+
+
+
+API_KEY = yaml.safe_load(open(os.path.join(
                             os.path.dirname(__file__),
                             '..',
                             '..',
@@ -49,9 +49,9 @@ def _get(op, **params):
     if hasattr(response, 'from_cache') and not response.from_cache:
         time.sleep(5)
     if response.status_code == 200:
-        logging.info('Request to %s succeeded', response.url)
+        logger.info('Request to %s succeeded', response.url)
     else:
-        logging.info('Request to %s failed (%s)', op, response.url)
+        logger.info('Request to %s failed (%s)', op, response.url)
     return response
 
 
@@ -62,10 +62,10 @@ def get(op, **params):
         if response.status_code == 200:
             break
         elif response.status_code in kill_codes:
-            logging.error('Failed to resolve %s (code=%s)', response.url, response.status_code)
+            logger.error('Failed to resolve %s (code=%s)', response.url, response.status_code)
             break
         else:
-            logging.error('Failed to resolve %s (code=%s). Retrying...', response.url, response.status_code)
+            logger.error('Failed to resolve %s (code=%s). Retrying...', response.url, response.status_code)
             print('Retrying in {} seconds...'.format(2**i))
             time.sleep(2**i)
     return etree.fromstring(response.content)
@@ -144,7 +144,7 @@ def parse_item(item_id, part_id=None):
     root = get_item_metadata(item_id)
     # Get metadata for each part
     parts = root.xpath('/Response/Result/Item/Parts/Part')
-    logging.info('Item %s contains %s parts', item_id, len(parts))
+    logger.info('Item %s contains %s parts', item_id, len(parts))
     if part_id is not None:
         parts = [p for p in parts if xmlget(p, 'PartID') == str(part_id)]
     parts = [map_part(part) for part in parts]
@@ -156,7 +156,7 @@ def parse_item(item_id, part_id=None):
     for page in root.xpath('/Response/Result/Item/Pages/Page'):
         pdata = map_page(page)
         pages[pdata['page_id']] = pdata['text']
-    logging.info('Item %s contains %s pages', item_id, len(pages))
+    logger.info('Item %s contains %s pages', item_id, len(pages))
     # Map the pages to each part/item
     for part in parts:
         part['item_id'] = item_id
@@ -168,7 +168,7 @@ def parse_item(item_id, part_id=None):
             try:
                 part['pages'][page_num] = pages[page_num]
             except KeyError:
-                logging.error('Page not found: %s', page_num)
+                logger.error('Page not found: %s', page_num)
         part['first_page'] = part['page_nums'][0]
         part['min_page'] = min(part['page_nums'])
         part['max_page'] = max(part['page_nums'])
@@ -203,7 +203,7 @@ def extract_items(searchterm, page=None, aggressive=True):
         root = get_matching_items(searchterm, page=page)
         publications = root.xpath('/Response/Result/Publication')
         total += len(publications)
-        logging.info('Found {} publications for {} (total={})'.format(len(publications), searchterm, total))
+        logger.info('Found {} publications for {} (total={})'.format(len(publications), searchterm, total))
         for pub in publications:
             key = '{}Url'.format(xmlget(pub, 'BHLType'))
             url = xmlget(pub, key)
@@ -215,7 +215,7 @@ def extract_items(searchterm, page=None, aggressive=True):
                 try:
                     route_request(url, aggressive=aggressive)
                 except Exception as e:
-                    logging.error('Failed to process {} ({})'.format(url, str(e)))
+                    logger.error('Failed to process {} ({})'.format(url, str(e)))
                 lookup[url] = 1
         #print '{:,} records processed!'.format(total)
         page += 1
@@ -298,7 +298,7 @@ def map_item(item):
     # Make request to get pages for this item
     xpath = '/Response/Result/Item/Pages/Page'
     pages = [xmlget(p, 'PageID', int) for p in item.xpath(xpath)]
-    logging.info('Mapping %s pages to item %s', len(pages), item_id)
+    logger.info('Mapping %s pages to item %s', len(pages), item_id)
     metadata['page_nums'] = pages
     return metadata
 
@@ -319,7 +319,7 @@ def map_part(part):
     xpath = '/Response/Result/Part/Pages/Page'
     pages = [xmlget(p, 'PageID', int) for p in root.xpath(xpath)]
     if pages:
-        logging.info('Mapping %s pages to part %s', len(pages), part_id)
+        logger.info('Mapping %s pages to part %s', len(pages), part_id)
         metadata['page_nums'] = pages
         return metadata
     print(etree.tostring(root, pretty_print=True))
@@ -362,11 +362,11 @@ def route_request(url, aggressive=True):
         if kind == 'page':
             page = get_page_metadata(id_, ocr='false', names='false')
             item_id = xmlget(page, '/Response/Result/Page/ItemID')
-            logging.info('Mapped page {} to item {}'.format(id_, item_id))
+            logger.info('Mapped page {} to item {}'.format(id_, item_id))
         elif kind == 'part':
             part = get_part_metadata(id_)
             item_id = xmlget(part, '/Response/Result/Part/ItemID')
-            logging.info('Mapped part {} to item {}'.format(id_, item_id))
+            logger.info('Mapped part {} to item {}'.format(id_, item_id))
         else:
             item_id = id_
         if item_id:
@@ -379,7 +379,7 @@ def route_request(url, aggressive=True):
             return db_find(**{'{}_id'.format(kind): id_})
         else:
             # Catch the small number of records that have no item id
-            logging.info('No item id: {}'.format(url))
+            logger.info('No item id: {}'.format(url))
 
 
 def db_find(item_id=0, part_id=0, page_id=0):
@@ -398,16 +398,16 @@ def db_find(item_id=0, part_id=0, page_id=0):
             if doc_id is None or row.doc_id.startswith('bhl:item'):
                 doc_id = row.doc_id
         docinfo = db_docinfo(doc_id)
-        logging.info('Returned %s specimens from database for %s', len(specimens), kwargstr)
+        logger.info('Returned %s specimens from database for %s', len(specimens), kwargstr)
         return Indexed(specimens, docinfo, True)
     # If no snippets found, check if item has been indexed
     rows = db_parts(item_id, part_id, page_id)
     for row in rows:
         docinfo = db_docinfo(row.id)
-        logging.info('Returned doc %s from database for %s', row.id, kwargstr)
+        logger.info('Returned doc %s from database for %s', row.id, kwargstr)
         return Indexed(specimens, docinfo, True)
     # No record of this document exists
-    logging.info('No data in database for %s', kwargstr)
+    logger.info('No data in database for %s', kwargstr)
     return Indexed(None, None, False)
 
 
@@ -425,7 +425,7 @@ def db_snippets(item_id=0, part_id=0, page_id=0):
               )
     kwargs = {'item_id': item_id, 'part_id': part_id, 'page_id': page_id}
     kwargstr = str({k: v for k, v in kwargs.items() if v})
-    logging.debug('Query for %s: %s', kwargstr, str(query))
+    logger.debug('Query for %s: %s', kwargstr, str(query))
     return query.all()
 
 
@@ -439,7 +439,7 @@ def db_parts(item_id=0, part_id=0, page_id=0):
                )
     kwargs = {'item_id': item_id, 'part_id': part_id, 'page_id': page_id}
     kwargstr = str({k: v for k, v in kwargs.items() if v})
-    logging.debug('Query for %s: %s', kwargstr, str(query))
+    logger.debug('Query for %s: %s', kwargstr, str(query))
     return query.all()
 
 
@@ -462,7 +462,7 @@ def db_docinfo(doc_id):
         docinfo['year'] = row.year
         bhl_mask = 'https://www.biodiversitylibrary.org/{}/{}'
         docinfo['url'] = bhl_mask.format('item', row.item_id)
-    logging.debug(str(query))
+    logger.debug(str(query))
     return docinfo
 
 
