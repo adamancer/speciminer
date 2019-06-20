@@ -68,7 +68,7 @@ class Parser(object):
 
     def findall(self, text):
         """Finds all likely catalog numbers within the given string"""
-        logger.info('Search "%s"', text)
+        #logger.debug('Search "%s"', text)
         matches = []
         for match in set([m[0] for m in self.mask.findall(text)]):
             if re.search(r'\d', match):
