@@ -1,3 +1,0 @@
-use: 'sqlite'
-sqlite:
-  path: ../output/gdd.db

@@ -1,8 +1,0 @@
-icthyolog[a-z]*
-
-(cardinal|cat|parrot|pipe|tile)fish(es)?
-eels?
-fish(es|ery|eries)?
-gills?
-sharks?
-tetraodontiform(a|e?s)?

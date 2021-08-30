@@ -1,0 +1,6 @@
+name: speciminer
+channels:
+- conda-forge
+- default
+dependencies:
+- pandas

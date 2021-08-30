@@ -1,8 +1,0 @@
-{% include '_header.htm' %}
-  <h1>Publications</h1>
-  <ol>
-  {%- for doc in documents -%}
-    <li><a href="/documents/{{ doc.id }}">{{ doc.title }} ({{ doc.year }})</a></li>
-  {%- endfor -%}
-  </ol>
-{% include '_footer.htm' %}

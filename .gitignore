@@ -1,20 +1,8 @@
-__pycache__/
-*.py[cod]
+__pycache__
+downloads
+register.py
 
-database/v*/*
-config/*.json
-docs/*
-input/*
-output/*
-mine_gdd_journals_*
-migrate.py
+.coverage
 
-*.db
+*.egg-info
 *.log
-*.pyc
-*.sqlite
-*.sqlite-journal
-*.xml
-
-.DS_Store
-api_keys.yml
